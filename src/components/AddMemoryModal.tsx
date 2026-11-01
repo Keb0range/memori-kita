@@ -2,12 +2,12 @@
 
 import React, { useState, useRef } from "react";
 import { Memory } from "@/data/memories";
-import { X, Upload, Sparkles, Loader2, Plus, Play, Hash, MapPin } from "lucide-react";
+import { X, Upload, Sparkles, Loader2, Plus, Play, Hash, MapPin, AlertCircle } from "lucide-react";
 
 interface AddMemoryModalProps {
   isOpen: boolean;
   onClose: () => void;
-  onAddMemory: (memory: Omit<Memory, "id">) => void;
+  onAddMemory: (memory: Omit<Memory, "id">) => Promise<void> | void;
 }
 
 const MAX_DATE = new Date(new Date().getTime() - (new Date().getTimezoneOffset() * 60000)).toISOString().split('T')[0];
@@ -62,7 +62,9 @@ export default function AddMemoryModal({
   const [tags, setTags] = useState<string[]>([]);
   const [newTagInput, setNewTagInput] = useState("");
   const [isAnalyzing, setIsAnalyzing] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const [aiError, setAiError] = useState<string | null>(null);
+  const [submitError, setSubmitError] = useState<string | null>(null);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -105,15 +107,20 @@ export default function AddMemoryModal({
       setIsAnalyzing(true);
       setAiError(null);
 
-      // Ambil file gambar pertama untuk analisis Gemini Vision
-      const imageToAnalyze = selectedFiles.find((f) => f.type.startsWith("image/"));
+      // Ambil file gambar pertama untuk analisis Gemini Vision (dengan fallback ekstensi)
+      const imageToAnalyze = selectedFiles.find(
+        (f) =>
+          f.type.startsWith("image/") ||
+          /\.(jpe?g|png|webp|avif|gif|bmp)$/i.test(f.name || "") ||
+          (!f.type.startsWith("video/") && !/\.(mp4|webm|mov)$/i.test(f.name || ""))
+      );
       if (!imageToAnalyze) {
-        setAiError("Auto-Tag hanya mendukung analisis file foto/gambar.");
+        setAiError("Auto-Tag hanya mendukung analisis file foto/gambar. Silakan pilih foto terlebih dahulu.");
         return;
       }
 
       const formData = new FormData();
-      formData.append("image", imageToAnalyze);
+      formData.append("image", imageToAnalyze, imageToAnalyze.name || "image.jpg");
       if (location.trim()) {
         formData.append("location", location.trim());
       }
@@ -166,31 +173,44 @@ export default function AddMemoryModal({
     setTags(tags.filter((t) => t !== tagToRemove));
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    setSubmitError(null);
+
     if (!title.trim() || previewUrls.length === 0) {
-      alert("Mohon isi judul dan upload minimal satu media kenangan.");
+      setSubmitError("Mohon isi judul dan upload minimal satu media kenangan.");
       return;
     }
 
-    const formattedDate = formatDateToLocale(date);
+    try {
+      setIsSubmitting(true);
+      const formattedDate = formatDateToLocale(date);
 
-    onAddMemory({
-      title: title.trim(),
-      date: formattedDate,
-      location: location.trim() || "Tidak ditentukan",
-      images: previewUrls,
-      tags: tags,
-    });
+      await onAddMemory({
+        title: title.trim(),
+        date: formattedDate,
+        location: location.trim() || "Tidak ditentukan",
+        images: previewUrls,
+        tags: tags,
+      });
 
-    // Reset Form
-    setTitle("");
-    setDate(MAX_DATE);
-    setLocation("");
-    setSelectedFiles([]);
-    setPreviewUrls([]);
-    setTags([]);
-    onClose();
+      // Reset Form jika berhasil
+      setTitle("");
+      setDate(MAX_DATE);
+      setLocation("");
+      setSelectedFiles([]);
+      setPreviewUrls([]);
+      setTags([]);
+      setSubmitError(null);
+      onClose();
+    } catch (err: any) {
+      console.error("Gagal menambahkan kenangan:", err);
+      const errorMessage =
+        err?.message || "Terjadi kesalahan saat menyimpan kenangan ke database.";
+      setSubmitError(`Gagal menyimpan: ${errorMessage}`);
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   return (
@@ -212,6 +232,22 @@ export default function AddMemoryModal({
 
         {/* Form Body */}
         <form onSubmit={handleSubmit} className="p-6 space-y-4">
+          {/* Notifikasi Error Submit */}
+          {submitError && (
+            <div className="p-3.5 bg-red-50 border border-red-200 text-red-700 text-xs rounded-xl flex items-center justify-between gap-2 animate-in fade-in">
+              <div className="flex items-center gap-2">
+                <AlertCircle className="w-4 h-4 shrink-0 text-red-600" />
+                <span>{submitError}</span>
+              </div>
+              <button
+                type="button"
+                onClick={() => setSubmitError(null)}
+                className="p-1 hover:bg-red-100 rounded-md text-red-500 hover:text-red-700 transition cursor-pointer"
+              >
+                <X className="w-3.5 h-3.5" />
+              </button>
+            </div>
+          )}
           {/* Multi-Upload Area (Foto & Video) */}
           <div className="space-y-2">
             <div className="flex items-center justify-between">
@@ -422,9 +458,17 @@ export default function AddMemoryModal({
             </button>
             <button
               type="submit"
-              className="px-5 py-2.5 rounded-lg bg-blue-600 hover:bg-blue-700 text-white font-semibold shadow-md transition-all cursor-pointer"
+              disabled={isSubmitting}
+              className="flex items-center gap-2 px-5 py-2.5 rounded-lg bg-blue-600 hover:bg-blue-700 text-white font-semibold shadow-md transition-all cursor-pointer disabled:opacity-60"
             >
-              Simpan Kenangan
+              {isSubmitting ? (
+                <>
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                  <span>Menyimpan ke Cloud...</span>
+                </>
+              ) : (
+                <span>Simpan Kenangan</span>
+              )}
             </button>
           </div>
         </form>

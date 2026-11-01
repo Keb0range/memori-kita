@@ -92,8 +92,8 @@ interface MemoryDetailModalProps {
   memory: Memory | null;
   isOpen: boolean;
   onClose: () => void;
-  onDeletePhoto: (memoryId: number, photoIndex: number) => void;
-  onDeleteMemory: (memoryId: number) => void;
+  onDeletePhoto: (memoryId: number | string, photoIndex: number) => void;
+  onDeleteMemory: (memoryId: number | string) => void;
   onUpdateMemory?: (updatedMemory: Memory) => void;
 }
 

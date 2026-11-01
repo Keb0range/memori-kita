@@ -4,13 +4,15 @@
 // ============================================================
 
 export interface Memory {
-  id: number;
+  id: number | string;
   title: string;       // Judul singkat kenangan
   date: string;        // Tanggal kejadian
   location: string;    // Lokasi tempat foto diambil
   images: string[];    // Array URL/Base64 gambar kenangan (Multi-Foto)
   tags: string[];      // AI tags — label yang dipakai untuk filtering
   color?: string;     // Warna aksen kartu (opsional)
+  userId?: string;    // ID Pengguna pemilik data kenangan (Firestore UID)
+  createdAt?: any;
 }
 
 // Array dummy data awal dengan multi-foto untuk demonstrasi fitur carousel
@@ -39,18 +41,6 @@ export const MEMORIES: Memory[] = [
     ],
     tags: ["teman", "kafe", "baju-hitam", "malam", "gathering"],
     color: "from-purple-400 to-indigo-500",
-  },
-  {
-    id: 3,
-    title: "Wisuda S1",
-    date: "5 Agustus 2024",
-    location: "Universitas Indonesia, Depok",
-    images: [
-      "https://images.unsplash.com/photo-1523050854058-8df90110c9f1?w=800&auto=format&fit=crop&q=80",
-      "https://images.unsplash.com/photo-1541339907198-e08756dedf3f?w=800&auto=format&fit=crop&q=80"
-    ],
-    tags: ["wisuda", "toga", "keluarga", "formal", "bahagia"],
-    color: "from-yellow-400 to-amber-500",
   },
   {
     id: 4,

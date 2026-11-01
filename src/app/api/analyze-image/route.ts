@@ -32,94 +32,165 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Validasi tipe file: hanya terima gambar
-    if (!imageFile.type.startsWith("image/")) {
+    // Validasi tipe file: terima file ber-tipe image/* atau dengan ekstensi gambar
+    const isImage =
+      (imageFile.type && imageFile.type.startsWith("image/")) ||
+      /\.(jpe?g|png|webp|avif|gif|bmp)$/i.test(imageFile.name || "");
+
+    if (!isImage) {
       return NextResponse.json(
-        { error: "File yang dikirim bukan gambar." },
+        { error: "File yang dikirim bukan gambar/foto." },
         { status: 400 }
       );
     }
 
     // ============================================================
     // STEP 2: Konversi File → Base64
-    // Gemini API membutuhkan gambar dalam format Base64 string,
-    // bukan raw binary atau URL. Prosesnya:
-    //   File → ArrayBuffer → Buffer (Node.js) → Base64 string
     // ============================================================
     const arrayBuffer = await imageFile.arrayBuffer();
-    const base64Image  = Buffer.from(arrayBuffer).toString("base64");
+    if (!arrayBuffer || arrayBuffer.byteLength === 0) {
+      return NextResponse.json(
+        { error: "File gambar kosong atau tidak terbaca." },
+        { status: 400 }
+      );
+    }
+    const base64Image = Buffer.from(arrayBuffer).toString("base64");
+    const mimeType =
+      imageFile.type && imageFile.type.startsWith("image/")
+        ? imageFile.type
+        : "image/jpeg";
 
     // ============================================================
     // STEP 3: Kirim ke Gemini Vision API
-    // Model gemini-3.8-flash dipilih karena:
-    //   - Mendukung multimodal (teks + gambar) 
-    //   - Cepat dan hemat kuota untuk tugas klasifikasi
-    //   - Memberikan hasil yang konsisten untuk format terstruktur
+    // Prompt terstruktur untuk Pakaian Bergender, Kerudung, Makanan/Minuman, dan Lokasi
     // ============================================================
-    const result = await ai.models.generateContent({
-      model: "gemini-3.8-flash",
-      contents: [
-        {
-          parts: [
-            // Part 1: Gambar dalam format inline data Base64
+    const prompt = `Analisis foto ini secara mendalam untuk ekstraksi tag cerdas:
+
+1. PAKAIAN & GENDER (WAJIB JIKA ADA ORANG DI DALAM FOTO):
+   - Jika ada pria/cowok: sebutkan jenis & warna pakaian, format 'cowo-[jenis]-[warna]' (contoh: cowo-baju-mustard, cowo-baju-hitam, cowo-kemeja-putih, cowo-kaos-biru, cowo-celana-jeans, cowo-celana-hitam).
+   - Jika ada wanita/cewek: sebutkan jenis & warna pakaian, format 'cewe-[jenis]-[warna]' (contoh: cewe-baju-pink, cewe-baju-putih, cewe-blouse-cream, cewe-celana-putih, cewe-rok-hitam).
+   - Hijab/Kerudung (jika dipakai): format 'kerudung-[warna]' (contoh: kerudung-hitam, kerudung-cream, kerudung-cokelat, kerudung-pink).
+
+2. OBJEK (HANYA MAKANAN ATAU MINUMAN):
+   - Jika ada makanan atau minuman di foto, sebutkan nama spesifiknya (contoh: es-krim, bakso, es-teh, mie-ayam, kopi, kue, pizza, jus).
+   - DILARANG menyebut objek benda mati selain makanan/minuman (abaikan laptop, mobil, sofa, meja, tas, dinding, lantai, dsb).
+
+3. LOKASI:
+   - Lokasi foto: '${lokasi && lokasi.trim() ? lokasi.trim() : "Tidak disebutkan"}'.
+
+4. DILARANG:
+   - JANGAN buat tag suasana/emosi (bahagia, santai, liburan, seru).
+   - JANGAN buat tag perabot atau latar (sofa, meja, kursi, dinding, ruangan).
+   - JANGAN buat tag pose foto (selfie, potret, pose).
+
+FORMAT OUTPUT:
+HANYA kembalikan kata-kata tag yang dipisahkan oleh tanda koma. Huruf kecil semua (lowercase), tanpa tanda pagar (#), tanpa spasi setelah koma, dan tanpa kalimat pembuka/penjelasan apapun.
+Contoh: cowo-baju-mustard,cewe-baju-pink,kerudung-hitam,es-krim`;
+
+    let rawText = "";
+    const candidateModels = ["gemini-3.5-flash-lite", "gemini-3.5-flash", "gemini-3-flash-preview"];
+    let lastError: any = null;
+
+    for (const model of candidateModels) {
+      try {
+        const result = await ai.models.generateContent({
+          model,
+          contents: [
             {
-              inlineData: {
-                mimeType: imageFile.type,   // Contoh: "image/jpeg", "image/png"
-                data: base64Image,
-              },
-            },
-            // Part 2: Instruksi teks untuk AI
-            {
-              text: `Kamu adalah AI pembuat tag cerdas untuk galeri foto. Lokasi foto: '${lokasi || "Tidak disebutkan"}'. Analisis gambar dan hasilkan maksimal 7 tag dengan aturan WAJIB berikut:
-
-1. Tag Entitas Lokasi: Jika lokasi disebutkan, ekstrak nama brand/tempat utama menjadi satu tag (contoh: dari 'Mixue Pleret' jadikan 'mixue').
-
-2. Tag Pakaian & Gender (KONDISIONAL):
-
-- Jika HANYA ADA 1 ORANG (cewe/cowo): gunakan format 'baju-[warna]' (contoh: 'baju-orange'). Jangan sebut gender.
-
-- Jika ADA 2 ORANG GENDER SAMA (cowo-cowo / cewe-cewe): gunakan format 'baju-[warna],baju-[warna]' (contoh: 'baju-hitam,baju-putih'). Jangan sebut gender.
-
-- Jika ADA 2 ORANG BEDA GENDER (cowo & cewe): WAJIB gabungkan gender dan warna dengan format 'cowo-baju-[warna],cewe-baju-[warna]' (contoh: 'cowo-baju-hitam,cewe-baju-pink').
-
-- Jika LEBIH DARI 2 ORANG: sebutkan saja warna-warna dominan 'baju-[warna]'.
-
-3. Tag Makanan/Objek Konkret: Jika ada makanan/minuman, sebutkan nama spesifiknya (contoh: 'es-krim', 'kopi'). Jika tidak ada, sebutkan objek benda mati dominan. HINDARI tag suasana abstrak.
-
-Format Output: HANYA berikan kata-kata yang dipisahkan oleh koma. Huruf kecil semua, tanpa spasi setelah koma, tanpa hashtag (#), dan tanpa kalimat penjelasan.`,
+              parts: [
+                {
+                  inlineData: {
+                    mimeType,
+                    data: base64Image,
+                  },
+                },
+                {
+                  text: prompt,
+                },
+              ],
             },
           ],
-        },
-      ],
-    });
+        });
+        rawText = result.text || result.candidates?.[0]?.content?.parts?.[0]?.text || "";
+        if (rawText && rawText.trim().length > 0) {
+          break; // Model berhasil menghasilkan respons
+        }
+      } catch (err: any) {
+        lastError = err;
+        console.warn(`[analyze-image] Model ${model} failed, trying next model:`, err?.message || err);
+      }
+    }
+
+    if (!rawText && lastError) {
+      console.error("[analyze-image] All Gemini models failed:", lastError);
+      if (lastError?.status === 429 || lastError?.message?.includes("Quota")) {
+        return NextResponse.json(
+          { error: "Kuota AI sedang padat, silakan isi tag secara manual." },
+          { status: 429 }
+        );
+      }
+    }
 
     // ============================================================
-    // STEP 4: Parse respons dari Gemini
-    // Ambil teks mentah dari respons, bersihkan, ubah ke array
+    // STEP 4: Parse respons & Gabungkan Tag Lokasi Input Pengguna
     // ============================================================
-    const rawText = result.candidates?.[0]?.content?.parts?.[0]?.text ?? "";
+    // 1. Ekstrak Tag Lokasi dari input pengguna secara otomatis
+    const locationTags: string[] = [];
+    if (lokasi && lokasi.trim()) {
+      const cleanParts = lokasi
+        .split(/[,/|]+/)
+        .map((part) =>
+          part
+            .trim()
+            .toLowerCase()
+            .replace(/^#+/, "")
+            .replace(/\s+/g, "-")
+            .replace(/[^a-z0-9\-]/g, "")
+        )
+        .filter((part) => part.length > 1);
 
-    // Bersihkan teks: hilangkan spasi ekstra, tanda pagar, dan baris baru
-    const tags = rawText
-      .split(",")
+      locationTags.push(...cleanParts);
+    }
+
+    // 2. Daftar kata/pola terlarang (furnitur, latar, dinding, tulisan, pose, suasana)
+    const BANNED_PATTERNS = [
+      "sofa", "meja", "kursi", "dinding", "lantai", "atap", "pintu", "jendela",
+      "tulisan", "teks", "selfie", "wefie", "pose", "foto", "potret", "kamera",
+      "ruangan", "kamar", "indoor", "outdoor", "background", "latar", "dekorasi",
+      "suasana", "bahagia", "santai", "liburan", "hangat", "seru", "nostalgia",
+      "momen", "indah", "cantik", "estetik", "aesthetic", "vibe"
+    ];
+
+    // 3. Bersihkan tag hasil AI
+    const aiTags = rawText
+      .split(/[,;\n]+/)
       .map((tag: string) =>
         tag
           .trim()
           .toLowerCase()
-          .replace(/^#+/, "")      // Hapus tanda # di awal jika ada
-          .replace(/\s+/g, "-")   // Ganti spasi dengan tanda hubung
-          .replace(/[^a-z0-9\-]/g, "") // Hapus karakter non-alphanumeric kecuali -
+          .replace(/^#+/, "")
+          .replace(/^[-*•\d.]+\s*/, "")
+          .replace(/\s+/g, "-")
+          .replace(/[^a-z0-9\-]/g, "")
       )
-      .filter((tag: string) => tag.length > 0)
-      .slice(0, 7); // Maksimal 7 tags
+      .filter((tag: string) => {
+        if (tag.length < 2) return false;
+        // Tolak jika mengandung kata terlarang
+        const isBanned = BANNED_PATTERNS.some((pattern) => tag.includes(pattern));
+        return !isBanned;
+      });
 
-    // Jika AI tidak menghasilkan tags yang valid, kembalikan array kosong
-    if (tags.length === 0) {
+    // 4. Gabungkan Tag AI (Pakaian & Objek) + Tag Lokasi User (Keduanya harus ada!)
+    // Urutkan tag pakaian & objek di depan lalu tag lokasi
+    const finalTags = Array.from(new Set([...aiTags, ...locationTags])).slice(0, 8);
+
+    // Jika tidak ada tags sama sekali, kembalikan array kosong
+    if (finalTags.length === 0) {
       return NextResponse.json({ tags: [] });
     }
 
     // Kembalikan tags sebagai array JSON ke frontend
-    return NextResponse.json({ tags });
+    return NextResponse.json({ tags: finalTags });
 
   } catch (error: any) {
     // ============================================================

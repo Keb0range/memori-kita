@@ -5,7 +5,7 @@ import { Memory } from "@/data/memories";
 import { Calendar, MapPin, Layers, Play } from "lucide-react";
 
 const FALLBACK_IMAGE =
-  "https://placehold.co/600x400/e2e8f0/64748b?text=Tidak+Ada+Gambar";
+  "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 600 400' fill='%23f1f5f9'%3E%3Crect width='600' height='400' fill='%23f8fafc'/%3E%3Ccircle cx='300' cy='170' r='36' fill='%23cbd5e1'/%3E%3Cpath d='M180 300l80-80 60 50 70-70 90 100H180z' fill='%23cbd5e1'/%3E%3Ctext x='50%25' y='345' font-family='sans-serif' font-size='15' font-weight='600' fill='%2394a3b8' text-anchor='middle'%3ETidak Ada Foto Sampul%3C/text%3E%3C/svg%3E";
 
 const isVideoMedia = (url: string) => {
   if (!url) return false;
@@ -75,6 +75,7 @@ export default function MemoryCard({ memory, onClick }: MemoryCardProps) {
           <img
             src={imgSrc}
             alt={memory.title}
+            referrerPolicy="no-referrer"
             onError={() => {
               setImgSrc(FALLBACK_IMAGE);
             }}
