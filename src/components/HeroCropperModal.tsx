@@ -10,7 +10,7 @@ interface HeroCropperModalProps {
   isOpen: boolean;
   imageSrc: string | null;
   onClose: () => void;
-  onCropComplete: (croppedImageUrl: string) => void;
+  onCropComplete: (croppedImageUrl: string) => void | Promise<void>;
 }
 
 export default function HeroCropperModal({
@@ -37,11 +37,13 @@ export default function HeroCropperModal({
     try {
       setIsProcessing(true);
       const croppedImage = await getCroppedImg(imageSrc, croppedAreaPixels);
-      onCropComplete(croppedImage);
+      // Optimistic: segera tutup modal setelah crop selesai
       onClose();
+      // Panggil handler tanpa menahan modal tetap terbuka
+      await onCropComplete(croppedImage);
     } catch (err) {
-      console.error("Gagal memotong gambar:", err);
-      alert("Gagal memotong gambar. Silakan coba lagi.");
+      console.error("Gagal memproses gambar sampul:", err);
+      alert("Gagal memproses gambar sampul. Silakan coba lagi.");
     } finally {
       setIsProcessing(false);
     }
@@ -90,13 +92,13 @@ export default function HeroCropperModal({
           </button>
         </div>
 
-        {/* Area Cropper (Rasio 21:9 Widescreen Banner) */}
+        {/* Area Cropper (Rasio Landscape Lebar Standar 16:9) */}
         <div className="relative w-full h-[40vh] sm:h-[48vh] bg-black overflow-hidden select-none">
           <Cropper
             image={imageSrc}
             crop={crop}
             zoom={zoom}
-            aspect={21 / 9}
+            aspect={16 / 9}
             onCropChange={setCrop}
             onZoomChange={setZoom}
             onCropComplete={handleCropAreaChange}

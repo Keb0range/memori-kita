@@ -3,6 +3,8 @@ import {
   addDoc,
   deleteDoc,
   updateDoc,
+  setDoc,
+  getDoc,
   doc,
   query,
   where,
@@ -203,3 +205,158 @@ export async function updateMemory(
  * Alias kompatibilitas untuk updateMemoryInFirestore
  */
 export const updateMemoryInFirestore = updateMemory;
+
+/**
+ * Menyimpan data profil/pengaturan pengguna (appName, coverPhoto) ke Firestore di dokumen users/{userId}
+ */
+export async function saveUserProfile(
+  userId: string,
+  profileData: Partial<{ appName: string; coverPhoto: string; heroBg: string }>
+): Promise<void> {
+  if (!userId) return;
+  try {
+    const userDocRef = doc(db, "users", userId);
+    await setDoc(userDocRef, { ...profileData, updatedAt: serverTimestamp() }, { merge: true });
+  } catch (error) {
+    console.error("Gagal menyimpan profil pengguna ke Firestore:", error);
+    throw error;
+  }
+}
+
+/**
+ * Menyimpan nama aplikasi kustom pengguna ke Firestore di dokumen users/{userId}
+ */
+export async function saveUserAppName(userId: string, appName: string): Promise<void> {
+  return saveUserProfile(userId, { appName: appName.trim() });
+}
+
+/**
+ * Mengunggah gambar sampul ke Firebase Storage (dengan fallback Base64 permanen)
+ * dan mengembalikan URL permanen yang siap dipakai.
+ */
+export async function uploadCoverPhotoToStorage(userId: string, imageUri: string): Promise<string> {
+  if (!imageUri || !imageUri.startsWith("blob:")) {
+    return imageUri;
+  }
+
+  try {
+    const res = await fetch(imageUri);
+    const blob = await res.blob();
+
+    let uploadedUrl: string | null = null;
+
+    // Coba upload ke Firebase Storage jika storage aktif (timeout 8 detik)
+    try {
+      if (storage && userId) {
+        const cleanUserId = encodeURIComponent(userId.trim() || "anonymous");
+        const filename = `covers/${cleanUserId}/${Date.now()}_cover.jpg`;
+        const storageRef = ref(storage, filename);
+
+        const uploadTask = uploadBytes(storageRef, blob, { contentType: "image/jpeg" }).then(
+          (snapshot) => getDownloadURL(snapshot.ref)
+        );
+
+        const timeoutPromise = new Promise<string>((_, reject) =>
+          setTimeout(() => reject(new Error("Cover upload timeout")), 8000)
+        );
+
+        uploadedUrl = await Promise.race([uploadTask, timeoutPromise]);
+      }
+    } catch (storageErr) {
+      console.warn("Upload cover ke Storage dialihkan ke Base64 Data URL:", storageErr);
+    }
+
+    if (uploadedUrl) {
+      return uploadedUrl;
+    }
+
+    // Fallback Base64 permanen: tahan banting, tidak pernah kedaluwarsa
+    return await new Promise<string>((resolve) => {
+      const reader = new FileReader();
+      reader.onloadend = () => resolve(reader.result as string);
+      reader.onerror = () => resolve(imageUri);
+      reader.readAsDataURL(blob);
+    });
+  } catch (e) {
+    console.error("Gagal memproses gambar sampul:", e);
+    return imageUri;
+  }
+}
+
+/**
+ * Menyimpan foto sampul pengguna ke Firestore (users/{userId}) secara background/asinkron.
+ * Jika URL masih berupa blob, upload dulu ke Storage / Base64.
+ */
+export async function saveUserCoverPhoto(userId: string, imageUri: string): Promise<string> {
+  if (!userId) throw new Error("User ID diperlukan untuk menyimpan sampul.");
+
+  // Dapatkan URL permanen (Firebase Storage atau Base64)
+  const permanentUrl = await uploadCoverPhotoToStorage(userId, imageUri);
+
+  // Penulisan ke Firestore dijalankan secara background tanpa memblokir pemanggil jika tidak diawait
+  const userDocRef = doc(db, "users", userId);
+  setDoc(
+    userDocRef,
+    { coverPhoto: permanentUrl, heroBg: permanentUrl, updatedAt: serverTimestamp() },
+    { merge: true }
+  ).catch((err) => {
+    console.error("Background Firestore saveUserCoverPhoto gagal:", err);
+  });
+
+  return permanentUrl;
+}
+
+/**
+ * Berlangganan secara realtime data profil pengguna (appName & coverPhoto) dari Firestore di users/{userId}
+ */
+export function subscribeUserProfile(
+  userId: string,
+  onUpdate: (data: { appName: string | null; coverPhoto: string | null }) => void
+): () => void {
+  if (!userId) {
+    onUpdate({ appName: null, coverPhoto: null });
+    return () => {};
+  }
+  const userDocRef = doc(db, "users", userId);
+  return onSnapshot(
+    userDocRef,
+    (snap) => {
+      if (snap.exists()) {
+        const data = snap.data();
+        const appName =
+          data && typeof data.appName === "string" && data.appName.trim()
+            ? data.appName.trim()
+            : null;
+        
+        // Ambil URL sampul, abaikan jika merupakan blob sementara yang sudah mati
+        const rawCover = data.coverPhoto || data.heroBg || data.coverUrl || data.heroBackground;
+        let coverPhoto: string | null = null;
+        if (
+          typeof rawCover === "string" &&
+          rawCover.trim().length > 0 &&
+          !rawCover.startsWith("blob:")
+        ) {
+          coverPhoto = rawCover.trim();
+        }
+
+        onUpdate({ appName, coverPhoto });
+        return;
+      }
+      onUpdate({ appName: null, coverPhoto: null });
+    },
+    (error) => {
+      console.error("Gagal mendengarkan data profil pengguna di Firestore:", error);
+      onUpdate({ appName: null, coverPhoto: null });
+    }
+  );
+}
+
+/**
+ * Berlangganan secara realtime nama aplikasi dari Firestore di users/{userId} (kompatibilitas)
+ */
+export function subscribeUserAppName(
+  userId: string,
+  onUpdate: (appName: string | null) => void
+): () => void {
+  return subscribeUserProfile(userId, (res) => onUpdate(res.appName));
+}

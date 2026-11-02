@@ -26,6 +26,11 @@ import {
   deleteMemoryFromFirestore,
   updateMemory,
   updateMemoryInFirestore,
+  saveUserAppName,
+  saveUserCoverPhoto,
+  uploadCoverPhotoToStorage,
+  saveUserProfile,
+  subscribeUserProfile,
 } from "@/services/memoryService";
 
 export default function Home() {
@@ -84,6 +89,57 @@ export default function Home() {
     return () => unsubscribe();
   }, [currentUser, isAuthLoading]);
 
+  // Real-time synchronization Data Pengguna (Nama Aplikasi & Foto Sampul) dari Cloud Firestore
+  useEffect(() => {
+    if (isAuthLoading) return;
+
+    if (!currentUser) {
+      // Mode Guest / Logout: pastikan nama kembali ke default "MemoriAI" dan foto sampul null (default)
+      setAppName("MemoriAI");
+      setTempAppName("MemoriAI");
+      setHeroBg(null);
+      try {
+        localStorage.removeItem("customAppName");
+        localStorage.removeItem("userAppName");
+        localStorage.removeItem("userCoverPhoto");
+      } catch {}
+      return;
+    }
+
+    // Mode Login: Dengarkan dan ambil serentak nama aplikasi & foto sampul dari dokumen users/{currentUser.uid}
+    const unsubscribe = subscribeUserProfile(currentUser.uid, ({ appName: firestoreName, coverPhoto }) => {
+      // 1. Sinkronisasi Nama Aplikasi (hanya update jika berbeda agar tidak memicu re-render berlebihan)
+      if (firestoreName) {
+        setAppName((prev) => (prev === firestoreName ? prev : firestoreName));
+        setTempAppName((prev) => (prev === firestoreName ? prev : firestoreName));
+        try {
+          localStorage.setItem("userAppName", firestoreName);
+        } catch {}
+      } else {
+        setAppName((prev) => (prev === "MemoriAI" ? prev : "MemoriAI"));
+        setTempAppName((prev) => (prev === "MemoriAI" ? prev : "MemoriAI"));
+        try {
+          localStorage.removeItem("userAppName");
+        } catch {}
+      }
+
+      // 2. Sinkronisasi Foto Sampul (hanya update jika URL berbeda untuk mencegah flicker/re-render saat pengiriman data)
+      if (coverPhoto) {
+        setHeroBg((prev) => (prev === coverPhoto ? prev : coverPhoto));
+        try {
+          localStorage.setItem("userCoverPhoto", coverPhoto);
+        } catch {}
+      } else {
+        setHeroBg((prev) => (prev === null ? prev : null));
+        try {
+          localStorage.removeItem("userCoverPhoto");
+        } catch {}
+      }
+    });
+
+    return () => unsubscribe();
+  }, [currentUser, isAuthLoading]);
+
   // Handler Login dengan Google Popup
   const handleGoogleLogin = async () => {
     try {
@@ -96,13 +152,19 @@ export default function Home() {
     }
   };
 
-  // Handler Logout
+  // Handler Logout: Bersihkan state & kembalikan nama aplikasi dan foto sampul ke default
   const handleLogout = async () => {
     try {
       try {
         localStorage.removeItem("userAuthPhoto");
+        localStorage.removeItem("customAppName");
+        localStorage.removeItem("userAppName");
+        localStorage.removeItem("userCoverPhoto");
       } catch {}
       setAvatarSrc(defaultAvatar);
+      setAppName("MemoriAI");
+      setTempAppName("MemoriAI");
+      setHeroBg(null);
       await signOut(auth);
     } catch (error) {
       console.error("Gagal logout:", error);
@@ -129,15 +191,6 @@ export default function Home() {
 
   // Ambil data localStorage hanya setelah client-side mounted
   useEffect(() => {
-    // Ambil nama kustom dari localStorage setelah client terpasang
-    try {
-      const savedName = localStorage.getItem("customAppName");
-      if (savedName && savedName.trim()) {
-        setAppName(savedName.trim());
-        setTempAppName(savedName.trim());
-      }
-    } catch {}
-
     // Ambil foto avatar kustom atau foto auth Google yang di-cache dari localStorage
     try {
       const customAvatar = localStorage.getItem("userAvatar");
@@ -150,6 +203,23 @@ export default function Home() {
         } else {
           setAvatarSrc(savedAvatar);
         }
+      }
+    } catch {}
+
+    // Ambil cache nama user jika ada sesi login tersimpan sebelumnya (anti-flicker)
+    try {
+      const cachedUserName = localStorage.getItem("userAppName");
+      if (cachedUserName && cachedUserName.trim()) {
+        setAppName(cachedUserName.trim());
+        setTempAppName(cachedUserName.trim());
+      }
+    } catch {}
+
+    // Ambil cache foto sampul user jika ada sesi login tersimpan sebelumnya (anti-flicker saat reload)
+    try {
+      const cachedCover = localStorage.getItem("userCoverPhoto");
+      if (cachedCover && cachedCover.trim()) {
+        setHeroBg(cachedCover.trim());
       }
     } catch {}
 
@@ -173,16 +243,6 @@ export default function Home() {
       console.error("Gagal menyimpan avatar ke localStorage:", err);
     }
   };
-
-  useEffect(() => {
-    if (isMounted && appName) {
-      try {
-        localStorage.setItem("customAppName", appName);
-      } catch (err) {
-        console.error("Gagal menyimpan customAppName ke localStorage:", err);
-      }
-    }
-  }, [appName, isMounted]);
 
   // Hero Cover Background & Cropper State
   const [heroBg, setHeroBg] = useState<string | null>(null);
@@ -338,17 +398,24 @@ export default function Home() {
     setSelectedMemory(updatedMemory);
   };
 
-  // Handler: Simpan Nama Aplikasi ke State & LocalStorage
-  const handleSaveAppName = (newName: string) => {
+  // Handler: Simpan Nama Aplikasi ke State, Firestore (User), & Cache
+  const handleSaveAppName = async (newName: string) => {
     const trimmed = newName.trim();
     if (!trimmed) return;
     setAppName(trimmed);
-    try {
-      localStorage.setItem("customAppName", trimmed);
-    } catch (e) {
-      console.error("Gagal menyimpan nama aplikasi ke localStorage:", e);
-    }
+    setTempAppName(trimmed);
     setIsTitleModalOpen(false);
+
+    if (currentUser) {
+      try {
+        await saveUserAppName(currentUser.uid, trimmed);
+        try {
+          localStorage.setItem("userAppName", trimmed);
+        } catch {}
+      } catch (e) {
+        console.error("Gagal menyimpan nama aplikasi ke Firestore:", e);
+      }
+    }
   };
 
   return (
@@ -545,11 +612,19 @@ export default function Home() {
         />
 
         {/* Sisipkan Gambar Sampul & Pelindung Gradasi (Hero Overlay) */}
-        {heroBg && (
+        {heroBg && !heroBg.startsWith("blob:") && (
           <>
             <img
               src={heroBg}
               alt="Hero Cover"
+              onError={() => {
+                // Jika gambar gagal dimuat (misal broken URL atau jaringan terputus), fallback aman ke gradasi default
+                console.warn("Foto sampul gagal dimuat, dialihkan ke latar belakang gradasi default.");
+                setHeroBg(null);
+                try {
+                  localStorage.removeItem("userCoverPhoto");
+                } catch {}
+              }}
               className="absolute inset-0 w-full h-full object-cover object-center z-0"
             />
             <div className="absolute inset-0 z-10 bg-gradient-to-b from-blue-950/90 via-slate-900/60 to-white pointer-events-none" />
@@ -562,9 +637,9 @@ export default function Home() {
             e.currentTarget.blur();
             fileInputRef.current?.click();
           }}
-          className="absolute bottom-8 right-6 z-30 px-4 py-2 rounded-full bg-black/40 hover:bg-black/60 backdrop-blur-md text-white text-xs font-medium flex items-center gap-2 cursor-pointer shadow-lg border border-white/20 transition-all duration-300 opacity-100 md:opacity-0 md:group-hover:opacity-100"
+          className="absolute bottom-4 right-4 md:bottom-8 md:right-6 z-30 px-2.5 py-1 md:px-4 md:py-2 rounded-full bg-black/40 hover:bg-black/60 backdrop-blur-md text-white text-[11px] md:text-xs font-medium flex items-center gap-1.5 md:gap-2 cursor-pointer shadow-lg border border-white/20 transition-all duration-300 opacity-100 md:opacity-0 md:group-hover:opacity-100"
         >
-          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <svg className="w-3.5 h-3.5 md:w-4 md:h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
           </svg>
           {heroBg ? "Ubah Sampul" : "Tambah Sampul"}
@@ -796,8 +871,45 @@ export default function Home() {
           setIsCropperOpen(false);
           setTempImage(null);
         }}
-        onCropComplete={(croppedUrl) => {
-          setHeroBg(croppedUrl);
+        onCropComplete={async (croppedUrl) => {
+          if (currentUser) {
+            try {
+              // 1. Unggah ke Storage (atau Base64) untuk mendapatkan downloadURL
+              const downloadUrl = await uploadCoverPhotoToStorage(currentUser.uid, croppedUrl);
+
+              // 2. Optimistic UI: LANGSUNG perbarui state lokal React seketika downloadUrl didapatkan
+              setHeroBg(downloadUrl);
+              try {
+                localStorage.setItem("userCoverPhoto", downloadUrl);
+              } catch {}
+
+              // 3. Tulis ke Firestore secara asinkron di latar belakang (JANGAN diawait agar UI tidak terblokir)
+              saveUserProfile(currentUser.uid, { coverPhoto: downloadUrl, heroBg: downloadUrl }).catch((err) => {
+                console.error("Gagal menyimpan cover photo ke Firestore di latar belakang:", err);
+              });
+            } catch (err) {
+              console.error("Gagal mengunggah foto sampul ke Cloud:", err);
+              // Fallback jika proses upload bermasalah
+              setHeroBg(croppedUrl);
+            }
+          } else {
+            // Mode Guest: konversi ke Base64 agar tidak kedaluwarsa
+            try {
+              const res = await fetch(croppedUrl);
+              const blob = await res.blob();
+              const reader = new FileReader();
+              reader.onloadend = () => {
+                const base64 = reader.result as string;
+                setHeroBg(base64);
+                try {
+                  localStorage.setItem("userCoverPhoto", base64);
+                } catch {}
+              };
+              reader.readAsDataURL(blob);
+            } catch {
+              setHeroBg(croppedUrl);
+            }
+          }
         }}
       />
 
