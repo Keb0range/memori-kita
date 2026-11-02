@@ -17,6 +17,8 @@ import {
   SlidersHorizontal,
   X,
   LogOut,
+  Calendar,
+  ArrowUpDown,
 } from "lucide-react";
 import { signInWithPopup, signOut, onAuthStateChanged, User } from "firebase/auth";
 import { auth, googleProvider } from "@/lib/firebase";
@@ -250,46 +252,83 @@ export default function Home() {
   const [isCropperOpen, setIsCropperOpen] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // Search & Filter State
+  // Search, Date Filter & Sorting State
   const [searchQuery, setSearchQuery] = useState("");
-  const [selectedTag, setSelectedTag] = useState<string | null>(null);
+  const [selectedDate, setSelectedDate] = useState("");
+  const [sortOrder, setSortOrder] = useState<"newest" | "oldest">("newest");
 
   // Modal State
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [selectedMemory, setSelectedMemory] = useState<Memory | null>(null);
 
-  // Hitung frekuensi kemunculan tag dan ambil maksimal 7 tag paling populer
-  const popularTags = useMemo(() => {
-    const frequencyMap: Record<string, number> = {};
-    memories.forEach((m) => {
-      m.tags.forEach((tag) => {
-        const cleanTag = tag.toLowerCase().trim();
-        if (cleanTag) {
-          frequencyMap[cleanTag] = (frequencyMap[cleanTag] || 0) + 1;
-        }
-      });
-    });
+  // Helper: Konversi berbagai format string tanggal ke YYYY-MM-DD yang dapat dibandingkan
+  const parseDateToComparable = (dateStr: string): string => {
+    if (!dateStr) return "";
+    if (/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) return dateStr;
 
-    return Object.entries(frequencyMap)
-      .sort((a, b) => b[1] - a[1]) // Urutkan berdasarkan frekuensi tertinggi
-      .slice(0, 7) // Ambil maksimal 7 tag terpopuler
-      .map(([tag]) => tag);
-  }, [memories]);
+    const months: Record<string, string> = {
+      januari: "01",
+      februari: "02",
+      maret: "03",
+      april: "04",
+      mei: "05",
+      juni: "06",
+      juli: "07",
+      agustus: "08",
+      september: "09",
+      oktober: "10",
+      november: "11",
+      desember: "12",
+      jan: "01",
+      feb: "02",
+      mar: "03",
+      apr: "04",
+      may: "05",
+      jun: "06",
+      jul: "07",
+      aug: "08",
+      agu: "08",
+      sep: "09",
+      oct: "10",
+      okt: "10",
+      nov: "11",
+      dec: "12",
+      des: "12",
+    };
+    const parts = dateStr.trim().split(/\s+/);
+    if (parts.length >= 3) {
+      const day = parts[0].replace(/\D/g, "").padStart(2, "0");
+      const month = months[parts[1].toLowerCase()];
+      const year = parts[2].replace(/\D/g, "").slice(0, 4);
+      if (month && year.length === 4) {
+        return `${year}-${month}-${day}`;
+      }
+    }
 
-  // Filter memories berdasarkan kata kunci pencarian dan tag aktif
+    const parsed = Date.parse(dateStr);
+    if (!isNaN(parsed)) {
+      return new Date(parsed).toISOString().split("T")[0];
+    }
+    return "";
+  };
+
+  // Filter & Urutkan kenangan secara chaining: Pencarian Teks + Filter Tanggal + Sorting
   const filteredMemories = useMemo(() => {
-    return memories.filter((memory) => {
+    const filtered = memories.filter((memory) => {
       // Hapus permanen memori Wisuda S1 tanpa sampul dari galeri
       if (memory.title.toLowerCase().trim() === "wisuda s1") {
         return false;
       }
 
-      // Filter Tag
-      if (selectedTag && !memory.tags.includes(selectedTag)) {
-        return false;
+      // 1. Filter Tanggal (Date Picker)
+      if (selectedDate) {
+        const memDate = parseDateToComparable(memory.date);
+        if (memDate !== selectedDate) {
+          return false;
+        }
       }
 
-      // Filter Pencarian Teks (Cari di judul, lokasi, atau tags)
+      // 2. Filter Pencarian Teks (Cari di judul, lokasi, atau tags)
       if (searchQuery.trim()) {
         const query = searchQuery.toLowerCase().trim();
         const matchTitle = memory.title.toLowerCase().includes(query);
@@ -303,16 +342,41 @@ export default function Home() {
 
       return true;
     });
-  }, [memories, searchQuery, selectedTag]);
+
+    // 3. Urutan (Sorting: Terbaru vs Terlama)
+    return filtered.sort((a, b) => {
+      const dateA = parseDateToComparable(a.date);
+      const dateB = parseDateToComparable(b.date);
+
+      if (dateA && dateB) {
+        if (dateA !== dateB) {
+          return sortOrder === "newest"
+            ? dateB.localeCompare(dateA) // Descending: Terbaru ke Terlama
+            : dateA.localeCompare(dateB); // Ascending: Terlama ke Terbaru
+        }
+      } else if (dateA) {
+        return sortOrder === "newest" ? -1 : 1;
+      } else if (dateB) {
+        return sortOrder === "newest" ? 1 : -1;
+      }
+
+      const idA = typeof a.id === "number" ? a.id : 0;
+      const idB = typeof b.id === "number" ? b.id : 0;
+      return sortOrder === "newest" ? idB - idA : idA - idB;
+    });
+  }, [memories, searchQuery, selectedDate, sortOrder]);
 
   // Handler: Tambah Kenangan Baru
-  const handleAddMemory = async (newMemData: Omit<Memory, "id">) => {
+  const handleAddMemory = async (
+    newMemData: Omit<Memory, "id">,
+    onProgress?: (current: number, total: number, percent: number) => void
+  ) => {
     if (currentUser) {
       if (!currentUser.uid) {
         throw new Error("Sesi login pengguna tidak ditemukan. Silakan login kembali.");
       }
       try {
-        await addMemoryToFirestore(currentUser.uid, newMemData);
+        await addMemoryToFirestore(currentUser.uid, newMemData, onProgress);
       } catch (error: any) {
         console.error("Gagal menambahkan kenangan ke Firestore:", error);
         throw new Error(error?.message || "Gagal menyimpan kenangan ke database cloud.");
@@ -400,7 +464,7 @@ export default function Home() {
 
   // Handler: Simpan Nama Aplikasi ke State, Firestore (User), & Cache
   const handleSaveAppName = async (newName: string) => {
-    const trimmed = newName.trim();
+    const trimmed = newName.trim().slice(0, 12);
     if (!trimmed) return;
     setAppName(trimmed);
     setTempAppName(trimmed);
@@ -435,7 +499,7 @@ export default function Home() {
           />
 
           {/* Sisi Kiri: Foto Profil di Paling Kiri & Nama Aplikasi "MemoriAI" di Sebelah Kanannya */}
-          <div className="flex items-center gap-3 sm:gap-3.5">
+          <div className="flex items-center gap-2 sm:gap-3.5 min-w-0">
             {/* Foto Profil / Avatar Interaktif (Di Sebelah Paling Kiri) */}
             <div
               onClick={() => avatarInputRef.current?.click()}
@@ -471,13 +535,13 @@ export default function Home() {
             </div>
 
             {/* Teks Nama Aplikasi (Persis di Sebelah Kanan Foto Profil) */}
-            <div className="group/title flex items-center gap-1.5 min-w-[80px] sm:min-w-[96px] h-7">
+            <div className="group/title flex items-center gap-1.5 h-7">
               {!isMounted ? (
                 /* Skeleton Penahan Saat Awal Render (Cegah Flicker Teks & Cegah Hydration Error) */
                 <div className="w-20 sm:w-24 h-5 rounded-md bg-slate-100 animate-pulse" />
               ) : (
                 <>
-                  <h1 className="text-base sm:text-lg font-medium tracking-tight select-none flex items-center text-slate-800 transition-opacity duration-300 opacity-100">
+                  <h1 className="text-base sm:text-lg font-medium tracking-tight select-none text-slate-800 whitespace-nowrap transition-opacity duration-300 opacity-100">
                     {appName}
                   </h1>
                   <button
@@ -499,7 +563,7 @@ export default function Home() {
           </div>
 
           {/* Bagian Aksi Kanan: Tambah Kenangan & Google Auth */}
-          <div className="flex items-center gap-2.5 sm:gap-3">
+          <div className="flex items-center gap-2 sm:gap-3 shrink-0">
             {isAuthLoading ? (
               /* Skeleton Loader Halus Saat Status Auth Belum Terkonfirmasi */
               <div className="flex items-center gap-2 sm:gap-2.5 animate-pulse">
@@ -631,13 +695,13 @@ export default function Home() {
           </>
         )}
 
-        {/* Tombol Ubah / Tambah Sampul di Pojok Kanan Bawah (Auto-hide di Desktop) */}
+        {/* Tombol Ubah / Tambah Sampul di Pojok Kanan Bawah (Hidden by default, muncul saat hover / tap area Hero) */}
         <button
           onClick={(e) => {
             e.currentTarget.blur();
             fileInputRef.current?.click();
           }}
-          className="absolute bottom-4 right-4 md:bottom-8 md:right-6 z-30 px-2.5 py-1 md:px-4 md:py-2 rounded-full bg-black/40 hover:bg-black/60 backdrop-blur-md text-white text-[11px] md:text-xs font-medium flex items-center gap-1.5 md:gap-2 cursor-pointer shadow-lg border border-white/20 transition-all duration-300 opacity-100 md:opacity-0 md:group-hover:opacity-100"
+          className="absolute bottom-4 right-4 md:bottom-8 md:right-6 z-30 px-2.5 py-1 md:px-4 md:py-2 rounded-full bg-black/40 hover:bg-black/60 backdrop-blur-md text-white text-[11px] md:text-xs font-medium flex items-center gap-1.5 md:gap-2 cursor-pointer shadow-lg border border-white/20 transition-opacity duration-300 opacity-0 group-hover:opacity-100"
         >
           <svg className="w-3.5 h-3.5 md:w-4 md:h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
@@ -708,50 +772,77 @@ export default function Home() {
       </section>
 
       {/* ============================================================
-          TAGS FILTER BAR
+          FILTER & SORTING BAR (Date Picker & Urutan)
           ============================================================ */}
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-5 w-full">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-3.5 sm:py-4 w-full">
         {isAuthLoading ? (
           /* Skeleton Filter Bar Saat Memverifikasi Auth */
-          <div className="flex items-center gap-2 overflow-x-auto pb-2 scrollbar-none animate-pulse">
-            <div className="w-16 h-7 rounded-xl bg-slate-200/60 shrink-0" />
-            <div className="w-20 h-7 rounded-xl bg-slate-200/60 shrink-0" />
-            <div className="w-24 h-7 rounded-xl bg-slate-200/60 shrink-0" />
-            <div className="w-20 h-7 rounded-xl bg-slate-200/60 shrink-0" />
+          <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-3 p-3 rounded-2xl bg-slate-100/60 animate-pulse">
+            <div className="w-44 h-8 rounded-xl bg-slate-200/60" />
+            <div className="w-36 h-8 rounded-xl bg-slate-200/60" />
           </div>
         ) : (
-          <div className="flex items-center gap-2 overflow-x-auto pb-2 scrollbar-none">
-            <div className="flex items-center gap-1.5 text-xs font-semibold text-slate-400 mr-1 shrink-0">
-              <SlidersHorizontal className="w-3.5 h-3.5" />
-              <span>Filter:</span>
+          <div className="flex flex-col md:flex-row items-start md:items-center md:justify-between gap-3 md:gap-4 bg-white/80 backdrop-blur-md p-3 rounded-2xl border border-slate-200/80 shadow-xs w-full">
+            {/* Sisi Kiri / Atas di Mobile: Filter Tanggal (Date Picker) */}
+            <div className="flex items-center gap-2 flex-wrap w-full md:w-auto">
+              <span className="text-xs font-semibold text-slate-500 flex items-center gap-1.5 ml-0.5 shrink-0">
+                <Calendar className="w-3.5 h-3.5 text-blue-600 shrink-0" />
+                <span>Tanggal:</span>
+              </span>
+
+              <div className="relative flex items-center bg-slate-50 border border-slate-200 hover:border-slate-300 focus-within:border-blue-500 focus-within:ring-2 focus-within:ring-blue-100 rounded-xl px-2.5 py-1.5 transition">
+                <input
+                  type="date"
+                  value={selectedDate}
+                  onChange={(e) => setSelectedDate(e.target.value)}
+                  className="bg-transparent outline-none text-xs font-medium text-slate-700 cursor-pointer"
+                  title="Pilih tanggal kenangan"
+                />
+                {selectedDate && (
+                  <button
+                    type="button"
+                    onClick={() => setSelectedDate("")}
+                    className="ml-1.5 p-0.5 rounded-full hover:bg-slate-200 text-slate-400 hover:text-slate-700 transition cursor-pointer"
+                    title="Hapus filter tanggal"
+                  >
+                    <X className="w-3.5 h-3.5" />
+                  </button>
+                )}
+              </div>
+
+              {selectedDate && (
+                <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-xl text-xs font-medium bg-blue-50 text-blue-700 border border-blue-200/70 animate-fadeIn">
+                  <span>{selectedDate}</span>
+                  <button
+                    type="button"
+                    onClick={() => setSelectedDate("")}
+                    className="hover:text-blue-900 cursor-pointer"
+                    title="Batalkan filter tanggal"
+                  >
+                    <X className="w-3 h-3" />
+                  </button>
+                </span>
+              )}
             </div>
 
-            {/* Filter Semua */}
-            <button
-              onClick={() => setSelectedTag(null)}
-              className={`px-3.5 py-1.5 rounded-xl text-xs font-medium transition shrink-0 ${
-                selectedTag === null
-                  ? "bg-slate-900 text-white shadow-sm"
-                  : "bg-white text-slate-600 border border-slate-200 hover:bg-slate-100"
-              }`}
-            >
-              Semua ({memories.length})
-            </button>
-
-            {/* Filter Tag Items (Maksimal 7 Terpopuler) */}
-            {popularTags.map((tag) => (
-              <button
-                key={tag}
-                onClick={() => setSelectedTag(selectedTag === tag ? null : tag)}
-                className={`px-3 py-1.5 rounded-xl text-xs font-medium transition shrink-0 ${
-                  selectedTag === tag
-                    ? "bg-blue-600 text-white shadow-sm"
-                    : "bg-white text-slate-600 border border-slate-200 hover:bg-slate-100"
-                }`}
-              >
-                #{tag}
-              </button>
-            ))}
+            {/* Sisi Kanan / Bawah di Mobile: Urutan (Sorting) */}
+            <div className="flex items-center gap-2 w-full md:w-auto">
+              <span className="text-xs font-semibold text-slate-500 flex items-center gap-1.5 shrink-0">
+                <ArrowUpDown className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                <span>Urutkan:</span>
+              </span>
+              <div className="relative bg-slate-50 border border-slate-200 hover:border-slate-300 focus-within:border-blue-500 focus-within:ring-2 focus-within:ring-blue-100 rounded-xl px-2.5 py-1.5 transition">
+                <select
+                  value={sortOrder}
+                  onChange={(e) => setSortOrder(e.target.value as "newest" | "oldest")}
+                  className="bg-transparent outline-none text-xs font-semibold text-slate-700 cursor-pointer pr-1"
+                  title="Urutkan berdasarkan waktu"
+                >
+                  <option value="newest">Terbaru (Default)</option>
+                  <option value="oldest">Terlama</option>
+                </select>
+              </div>
+            </div>
           </div>
         )}
       </div>
@@ -766,20 +857,16 @@ export default function Home() {
             <div className="flex items-center justify-between">
               <div className="w-48 h-4 rounded-md bg-slate-200/60 animate-pulse" />
             </div>
-            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6 items-stretch">
+            <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 md:grid-cols-4 items-stretch">
               {[...Array(8)].map((_, i) => (
                 <div
                   key={i}
-                  className="bg-white rounded-3xl border border-slate-200/80 p-4 space-y-3 shadow-xs animate-pulse"
+                  className="bg-white rounded-xl sm:rounded-2xl border border-slate-200/80 p-1.5 sm:p-2 space-y-2 shadow-xs animate-pulse"
                 >
-                  <div className="w-full aspect-[4/3] rounded-2xl bg-slate-100" />
-                  <div className="space-y-2 pt-1">
-                    <div className="w-3/4 h-4 rounded-md bg-slate-100" />
-                    <div className="w-1/2 h-3 rounded-md bg-slate-100" />
-                  </div>
-                  <div className="flex items-center gap-1.5 pt-1">
-                    <div className="w-14 h-5 rounded-md bg-slate-100" />
-                    <div className="w-16 h-5 rounded-md bg-slate-100" />
+                  <div className="w-full aspect-square rounded-lg sm:rounded-xl bg-slate-100" />
+                  <div className="space-y-1.5 p-1">
+                    <div className="w-3/4 h-3.5 rounded bg-slate-100" />
+                    <div className="w-1/2 h-2.5 rounded bg-slate-100" />
                   </div>
                 </div>
               ))}
@@ -788,26 +875,26 @@ export default function Home() {
         ) : (
           <>
             {/* Count Header */}
-            <div className="flex items-center justify-between mb-6">
+            <div className="flex items-center justify-between mb-4 sm:mb-6">
               <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider">
                 Menampilkan {filteredMemories.length} dari {memories.length} Kenangan
               </p>
-              {(searchQuery || selectedTag) && (
+              {(searchQuery || selectedDate) && (
                 <button
                   onClick={() => {
                     setSearchQuery("");
-                    setSelectedTag(null);
+                    setSelectedDate("");
                   }}
-                  className="text-xs font-semibold text-blue-600 hover:text-blue-800 transition"
+                  className="text-xs font-semibold text-blue-600 hover:text-blue-800 transition cursor-pointer"
                 >
                   Reset Filter
                 </button>
               )}
             </div>
 
-            {/* Gallery Cards Grid */}
+            {/* Gallery Cards Grid (Google Photos Grid Style) */}
             {filteredMemories.length > 0 ? (
-              <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6 items-stretch">
+              <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 md:grid-cols-4 items-stretch">
                 {filteredMemories.map((memory) => (
                   <MemoryCard
                     key={memory.id}
@@ -825,15 +912,21 @@ export default function Home() {
                 <div>
                   <h3 className="text-base font-bold text-slate-900">Kenangan tidak ditemukan</h3>
                   <p className="text-xs text-slate-500 mt-1">
-                    Tidak ada kenangan yang cocok dengan kata kunci &quot;{searchQuery || selectedTag}&quot;.
+                    {searchQuery && selectedDate
+                      ? `Tidak ada kenangan yang cocok dengan kata kunci "${searchQuery}" pada tanggal ${selectedDate}.`
+                      : searchQuery
+                      ? `Tidak ada kenangan yang cocok dengan kata kunci "${searchQuery}".`
+                      : selectedDate
+                      ? `Tidak ada kenangan pada tanggal ${selectedDate}.`
+                      : "Tidak ada kenangan yang cocok dengan filter yang dipilih."}
                   </p>
                 </div>
                 <button
                   onClick={() => {
                     setSearchQuery("");
-                    setSelectedTag(null);
+                    setSelectedDate("");
                   }}
-                  className="px-4 py-2 rounded-xl bg-slate-900 text-white text-xs font-semibold hover:bg-slate-800 transition"
+                  className="px-4 py-2 rounded-xl bg-slate-900 text-white text-xs font-semibold hover:bg-slate-800 transition cursor-pointer"
                 >
                   Tampilkan Semua Kenangan
                 </button>
@@ -954,16 +1047,25 @@ export default function Home() {
                 e.preventDefault();
                 handleSaveAppName(tempAppName);
               }}
-              className="flex flex-col gap-4 mt-1"
+              className="flex flex-col gap-3.5 mt-1"
             >
-              <input
-                type="text"
-                value={tempAppName}
-                onChange={(e) => setTempAppName(e.target.value)}
-                autoFocus
-                placeholder="Misal: MemoriAI, Galeri Kenangan..."
-                className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 focus:border-blue-500 focus:ring-2 focus:ring-blue-100 bg-white outline-none text-sm font-medium text-slate-800 transition shadow-inner"
-              />
+              <div className="flex flex-col gap-1.5">
+                <input
+                  type="text"
+                  value={tempAppName}
+                  maxLength={12}
+                  onChange={(e) => setTempAppName(e.target.value)}
+                  autoFocus
+                  placeholder="Misal: MemoriAI, Galeri..."
+                  className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 focus:border-blue-500 focus:ring-2 focus:ring-blue-100 bg-white outline-none text-sm font-medium text-slate-800 transition shadow-inner"
+                />
+                <div className="flex justify-between items-center text-[11px] text-slate-400 px-1">
+                  <span>Maksimal 12 karakter</span>
+                  <span className={`font-mono ${tempAppName.length >= 12 ? "text-amber-600 font-semibold" : ""}`}>
+                    {tempAppName.length}/12
+                  </span>
+                </div>
+              </div>
 
               <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-100">
                 <button

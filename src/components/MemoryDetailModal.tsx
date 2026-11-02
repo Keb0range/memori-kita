@@ -114,8 +114,10 @@ export default function MemoryDetailModal({
 
   const [currentImgIndex, setCurrentImgIndex] = useState(0);
   const [isFullscreen, setIsFullscreen] = useState(false);
-  const [showControls, setShowControls] = useState(true);
-  const [touchStart, setTouchStart] = useState<number | null>(null);
+  const [showFullscreenControls, setShowFullscreenControls] = useState(true);
+  const [showControls, setShowControls] = useState(false);
+  const isSwipingRef = useRef(false);
+  const touchStartCoordRef = useRef<{ x: number; y: number } | null>(null);
 
   // State untuk Inline Editing
   const [isEditing, setIsEditing] = useState(false);
@@ -140,7 +142,7 @@ export default function MemoryDetailModal({
   useEffect(() => {
     setCurrentImgIndex(0);
     setIsFullscreen(false);
-    setTouchStart(null);
+    setShowControls(false);
     setDeleteConfirm({ isOpen: false, type: null });
     if (memory) {
       setEditedTitle(memory.title || "");
@@ -199,18 +201,26 @@ export default function MemoryDetailModal({
   const handleEditMediaUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (!e.target.files || e.target.files.length === 0) return;
     const newFiles = Array.from(e.target.files);
+    const MAX_SIZE_MB = 1024; // 1GB
+    const MAX_SIZE_BYTES = MAX_SIZE_MB * 1024 * 1024;
+
+    const oversizedFiles = newFiles.filter((f) => f.size > MAX_SIZE_BYTES);
+    if (oversizedFiles.length > 0) {
+      const oversizedNames = oversizedFiles.map((f) => `"${f.name}" (${(f.size / (1024 * 1024)).toFixed(1)}MB)`).join(", ");
+      alert(`Peringatan: Berkas ${oversizedNames} melebihi batas maksimal 1GB (1024MB).`);
+      if (editFileInputRef.current) {
+        editFileInputRef.current.value = "";
+      }
+      return;
+    }
+
     newFiles.forEach((file) => {
       if (file.type.startsWith("video/")) {
         const url = URL.createObjectURL(file) + "#t=0.1";
         setEditedMedia((prev) => [...prev, url]);
       } else {
-        const reader = new FileReader();
-        reader.onloadend = () => {
-          if (typeof reader.result === "string") {
-            setEditedMedia((prev) => [...prev, reader.result as string]);
-          }
-        };
-        reader.readAsDataURL(file);
+        const url = URL.createObjectURL(file);
+        setEditedMedia((prev) => [...prev, url]);
       }
     });
     if (editFileInputRef.current) {
@@ -353,23 +363,23 @@ export default function MemoryDetailModal({
   // 4. Auto-Hide Fullscreen Controls (Idle Timer 2.5s)
   useEffect(() => {
     if (!isFullscreen) {
-      setShowControls(true);
+      setShowFullscreenControls(true);
       return;
     }
 
     let timer: NodeJS.Timeout;
 
     const resetIdleTimer = () => {
-      setShowControls(true);
+      setShowFullscreenControls(true);
       clearTimeout(timer);
       timer = setTimeout(() => {
-        setShowControls(false);
+        setShowFullscreenControls(false);
       }, 2500);
     };
 
     const handleMouseLeave = () => {
       clearTimeout(timer);
-      setShowControls(false);
+      setShowFullscreenControls(false);
     };
 
     // Mulai timer awal saat fullscreen dibuka
@@ -394,23 +404,36 @@ export default function MemoryDetailModal({
   // 5. Swipe Navigation (Mobile/Touch)
   const handleTouchStart = (e: React.TouchEvent) => {
     if (e.targetTouches.length > 0) {
-      setTouchStart(e.targetTouches[0].clientX);
+      touchStartCoordRef.current = {
+        x: e.targetTouches[0].clientX,
+        y: e.targetTouches[0].clientY,
+      };
+      isSwipingRef.current = false;
     }
   };
 
   const handleTouchEnd = (e: React.TouchEvent) => {
-    if (touchStart === null || e.changedTouches.length === 0) return;
-    const touchEnd = e.changedTouches[0].clientX;
-    const delta = touchStart - touchEnd;
+    if (!touchStartCoordRef.current || e.changedTouches.length === 0) return;
+    const deltaX = touchStartCoordRef.current.x - e.changedTouches[0].clientX;
+    const deltaY = touchStartCoordRef.current.y - e.changedTouches[0].clientY;
 
-    if (delta > 50) {
-      // Geser ke kiri lebih dari 50px -> Next
-      handleNext();
-    } else if (delta < -50) {
-      // Geser ke kanan lebih dari 50px -> Prev
-      handlePrev();
+    // Threshold swipe horizontal: lebih dari 50px dan gerakan horizontal lebih dominan daripada vertikal
+    if (Math.abs(deltaX) > 50 && Math.abs(deltaX) > Math.abs(deltaY)) {
+      isSwipingRef.current = true;
+      if (deltaX > 50) {
+        // Usap ke kiri -> Foto berikutnya
+        handleNext();
+      } else {
+        // Usap ke kanan -> Foto sebelumnya
+        handlePrev();
+      }
     }
-    setTouchStart(null);
+
+    touchStartCoordRef.current = null;
+    // Beri jeda 200ms agar event click sintetis browser setelah touchend tidak memicu toggle UI
+    setTimeout(() => {
+      isSwipingRef.current = false;
+    }, 200);
   };
 
   // Hapus 1 Foto: buka custom dialog konfirmasi
@@ -515,9 +538,13 @@ export default function MemoryDetailModal({
             className="hidden"
           />
 
-          {/* Area Media Utama (Statis Edge-to-Edge di Luar Scroll Container) */}
+          {/* Area Media Utama (Auto Height di Mobile, Fixed di Desktop) */}
           <div
-            className="group relative w-full shrink-0 bg-slate-100 flex items-center justify-center overflow-hidden select-none h-[40vh] sm:h-[45vh]"
+            onClick={() => {
+              if (isSwipingRef.current) return;
+              setShowControls((prev) => !prev);
+            }}
+            className="group relative w-full h-auto md:h-[45vh] shrink-0 bg-slate-100 flex items-center justify-center overflow-hidden select-none cursor-pointer"
             onTouchStart={handleTouchStart}
             onTouchEnd={handleTouchEnd}
           >
@@ -525,7 +552,7 @@ export default function MemoryDetailModal({
             {currentPhoto ? (
               <div
                 key={currentImgIndex}
-                className="w-full h-full flex items-center justify-center overflow-hidden"
+                className="w-full h-auto md:h-full flex items-center justify-center overflow-hidden"
               >
                 {isVideoMedia(currentPhoto) ? (
                   <video
@@ -534,15 +561,20 @@ export default function MemoryDetailModal({
                     controls
                     preload="metadata"
                     playsInline
-                    className="w-full h-full object-cover animate-in fade-in zoom-in-[0.98] duration-300 ease-out"
+                    className="w-full h-auto md:h-full object-cover animate-in fade-in zoom-in-[0.98] duration-300 ease-out"
                   />
                 ) : (
                   <img
                     src={currentPhoto}
                     alt={`${isEditing ? editedTitle : memory.title} - Media ${currentImgIndex + 1}`}
-                    onClick={() => setIsFullscreen(true)}
-                    className="w-full h-full object-cover animate-in fade-in zoom-in-[0.98] duration-300 ease-out cursor-pointer hover:opacity-95 transition"
-                    title="Klik untuk membuka Fullscreen"
+                    onClick={(e) => {
+                      if (typeof window !== "undefined" && window.innerWidth >= 768) {
+                        e.stopPropagation();
+                        setIsFullscreen(true);
+                      }
+                    }}
+                    className="w-full h-auto md:h-full object-cover animate-in fade-in zoom-in-[0.98] duration-300 ease-out cursor-pointer hover:opacity-95 transition"
+                    title={typeof window !== "undefined" && window.innerWidth >= 768 ? "Klik untuk membuka Fullscreen" : undefined}
                   />
                 )}
               </div>
@@ -561,53 +593,73 @@ export default function MemoryDetailModal({
               </div>
             )}
 
-            {/* Tombol Hapus 1 Foto/Media (Mode Normal): Pojok kiri bawah, muncul saat di-hover */}
+            {/* Tombol Hapus 1 Foto/Media: Pojok kiri bawah tepat di atas foto */}
             {!isEditing && (
               <button
                 type="button"
-                onClick={handleDeleteCurrentPhoto}
-                className="absolute bottom-3 left-3 bg-black/40 hover:bg-red-500/90 text-white p-2 rounded-full backdrop-blur-sm opacity-0 group-hover:opacity-100 transition-all shadow-sm z-10 cursor-pointer"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  handleDeleteCurrentPhoto(e);
+                }}
+                className={`absolute bottom-2 left-2 sm:bottom-3 sm:left-3 bg-black/50 hover:bg-red-500/90 text-white p-2 rounded-full backdrop-blur-xs shadow-md z-20 cursor-pointer transition-opacity duration-300 ${
+                  showControls ? "opacity-100" : "opacity-0 pointer-events-none md:pointer-events-auto"
+                } md:opacity-0 md:group-hover:opacity-100`}
                 title="Hapus media ini"
               >
                 <Trash2 className="w-4 h-4" />
               </button>
             )}
 
-            {/* Tombol Fullscreen Icon di pojok kanan atas media (untuk gambar) */}
+            {/* Tombol Fullscreen / Expand: Pojok kanan atas tepat di atas foto */}
             {!isVideoMedia(currentPhoto) && currentPhoto && !isEditing && (
               <button
                 type="button"
-                onClick={() => setIsFullscreen(true)}
-                className="absolute top-3 right-3 bg-black/40 hover:bg-black/70 text-white p-2 rounded-full backdrop-blur-sm opacity-0 group-hover:opacity-100 transition-all shadow-sm z-10 cursor-pointer"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setIsFullscreen(true);
+                }}
+                className={`absolute top-2 right-2 sm:top-3 sm:right-3 bg-black/50 hover:bg-black/70 text-white p-2 rounded-full backdrop-blur-xs shadow-md z-20 cursor-pointer transition-opacity duration-300 ${
+                  showControls ? "opacity-100" : "opacity-0 pointer-events-none md:pointer-events-auto"
+                } md:opacity-0 md:group-hover:opacity-100`}
                 title="Tampilkan Layar Penuh"
               >
                 <Maximize2 className="w-4 h-4" />
               </button>
             )}
 
-            {/* Panah Navigasi Carousel (<, >) autohide dengan transition-opacity */}
+            {/* Panah Navigasi Carousel (<, >): Disembunyikan di Mobile, Muncul di Desktop */}
             {totalPhotos > 1 && (
               <>
                 <button
                   type="button"
-                  onClick={handlePrev}
-                  className="absolute left-3 top-1/2 -translate-y-1/2 bg-black/30 hover:bg-black/60 rounded-full p-2 text-white backdrop-blur-sm opacity-0 group-hover:opacity-100 transition-opacity duration-300 shadow-lg z-10 cursor-pointer"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    handlePrev(e);
+                  }}
+                  className="absolute left-2 sm:left-3 top-1/2 -translate-y-1/2 bg-black/40 hover:bg-black/60 rounded-full p-1.5 sm:p-2 text-white backdrop-blur-xs shadow-md z-20 cursor-pointer transition-opacity duration-300 hidden md:flex items-center justify-center md:opacity-0 md:group-hover:opacity-100"
                   title="Media sebelumnya"
                 >
-                  <ChevronLeft className="w-5 h-5" />
+                  <ChevronLeft className="w-4 h-4 sm:w-5 sm:h-5" />
                 </button>
 
                 <button
                   type="button"
-                  onClick={handleNext}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 bg-black/30 hover:bg-black/60 rounded-full p-2 text-white backdrop-blur-sm opacity-0 group-hover:opacity-100 transition-opacity duration-300 shadow-lg z-10 cursor-pointer"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    handleNext(e);
+                  }}
+                  className="absolute right-2 sm:right-3 top-1/2 -translate-y-1/2 bg-black/40 hover:bg-black/60 rounded-full p-1.5 sm:p-2 text-white backdrop-blur-xs shadow-md z-20 cursor-pointer transition-opacity duration-300 hidden md:flex items-center justify-center md:opacity-0 md:group-hover:opacity-100"
                   title="Media berikutnya"
                 >
-                  <ChevronRight className="w-5 h-5" />
+                  <ChevronRight className="w-4 h-4 sm:w-5 sm:h-5" />
                 </button>
 
-                {/* Indikator Media: Tengah bawah, autohide, tanpa ikon Layers */}
-                <div className="absolute bottom-3 left-1/2 -translate-x-1/2 bg-black/40 text-white text-xs px-3 py-1.5 rounded-full backdrop-blur-sm opacity-0 group-hover:opacity-100 transition-opacity duration-300 pointer-events-none z-10">
+                {/* Indikator Media: Tengah bawah */}
+                <div
+                  className={`absolute bottom-2 sm:bottom-3 left-1/2 -translate-x-1/2 bg-black/50 text-white text-[11px] sm:text-xs px-2.5 sm:px-3 py-1 sm:py-1.5 rounded-full backdrop-blur-xs pointer-events-none z-20 shadow-sm transition-opacity duration-300 ${
+                    showControls ? "opacity-100" : "opacity-0"
+                  } md:opacity-0 md:group-hover:opacity-100`}
+                >
                   {currentImgIndex + 1} / {totalPhotos}
                 </div>
               </>
@@ -837,66 +889,73 @@ export default function MemoryDetailModal({
       {/* Mode Fullscreen / Premium Lightbox */}
       {isFullscreen && (
         <div
-          className="fixed inset-0 z-[100] flex items-center justify-center bg-black/95 backdrop-blur-3xl select-none animate-fadeIn group overflow-hidden"
+          onClick={() => {
+            if (isSwipingRef.current) return;
+            setShowFullscreenControls((prev) => !prev);
+          }}
+          className="fixed inset-0 z-[100] bg-black flex items-center justify-center select-none animate-fadeIn overflow-hidden cursor-default"
           onTouchStart={handleTouchStart}
           onTouchEnd={handleTouchEnd}
         >
           {/* Controls Overlay Wrapper with Auto-Hide Transition */}
           <div
-            className={`absolute inset-0 z-50 transition-opacity duration-500 ease-in-out pointer-events-none ${
-              showControls ? "opacity-100" : "opacity-0"
+            className={`absolute inset-0 z-50 transition-opacity duration-300 pointer-events-none ${
+              showFullscreenControls ? "opacity-100" : "opacity-0"
             }`}
           >
             {/* Top Vignette Gradient */}
-            <div className="absolute top-0 inset-x-0 h-32 bg-gradient-to-b from-black/70 to-transparent pointer-events-none" />
+            <div className="absolute top-0 inset-x-0 h-28 bg-gradient-to-b from-black/60 to-transparent pointer-events-none" />
 
             {/* Bottom Vignette Gradient */}
-            <div className="absolute bottom-0 inset-x-0 h-32 bg-gradient-to-t from-black/70 to-transparent pointer-events-none" />
+            <div className="absolute bottom-0 inset-x-0 h-28 bg-gradient-to-t from-black/60 to-transparent pointer-events-none" />
 
-            {/* Indikator Posisi di Fullscreen (Tengah Bawah) */}
+            {/* Indikator Angka (4/4): Kunci di Bawah Tengah Layar */}
             {totalPhotos > 1 && (
-              <div className="absolute bottom-8 left-1/2 -translate-x-1/2 text-white/90 text-sm font-medium tracking-widest drop-shadow-[0_2px_4px_rgba(0,0,0,0.8)] pointer-events-none z-50">
+              <div className="absolute bottom-8 left-1/2 -translate-x-1/2 bg-black/50 backdrop-blur-sm px-3.5 py-1.5 rounded-full text-white text-sm z-50 tracking-widest pointer-events-none shadow-md">
                 {currentImgIndex + 1} / {totalPhotos}
               </div>
             )}
 
-            {/* Tombol Close (Naked Icon - Pojok Kanan Atas Simetris) */}
+            {/* Tombol Close (X): Kunci di Pojok Kanan Atas Layar */}
             <button
               type="button"
-              onClick={() => setIsFullscreen(false)}
-              className="absolute top-6 right-6 z-50 text-white/80 hover:text-white transition-colors duration-200 drop-shadow-[0_2px_8px_rgba(0,0,0,0.8)] cursor-pointer p-4 pointer-events-auto"
+              onClick={(e) => {
+                e.stopPropagation();
+                setIsFullscreen(false);
+              }}
+              className="absolute top-4 right-4 z-50 bg-black/50 hover:bg-black/75 rounded-full text-white p-2.5 backdrop-blur-sm transition-colors cursor-pointer pointer-events-auto shadow-lg"
               title="Tutup Layar Penuh"
             >
-              <svg className="w-8 h-8" fill="none" stroke="currentColor" strokeWidth="2.5" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
-              </svg>
+              <X className="w-6 h-6" />
             </button>
 
-            {/* Navigasi Panah Kiri & Kanan */}
+            {/* Navigasi Panah Kiri & Kanan: Disembunyikan di Mobile, Muncul di Desktop */}
             {totalPhotos > 1 && (
               <>
                 {/* Tombol Panah Kiri */}
                 <button
                   type="button"
-                  onClick={handlePrev}
-                  className="absolute left-6 top-1/2 -translate-y-1/2 z-50 text-white/80 hover:text-white transition-colors duration-200 drop-shadow-[0_2px_8px_rgba(0,0,0,0.8)] cursor-pointer p-4 pointer-events-auto"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    handlePrev(e);
+                  }}
+                  className="absolute left-4 top-1/2 -translate-y-1/2 z-50 bg-black/50 hover:bg-black/75 rounded-full p-2.5 sm:p-3 text-white backdrop-blur-sm transition-colors cursor-pointer pointer-events-auto shadow-lg hidden md:flex items-center justify-center"
                   title="Media sebelumnya"
                 >
-                  <svg className="w-12 h-12" fill="none" stroke="currentColor" strokeWidth="2.5" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 19.5L8.25 12l7.5-7.5" />
-                  </svg>
+                  <ChevronLeft className="w-6 h-6 sm:w-7 sm:h-7" />
                 </button>
 
                 {/* Tombol Panah Kanan */}
                 <button
                   type="button"
-                  onClick={handleNext}
-                  className="absolute right-6 top-1/2 -translate-y-1/2 z-50 text-white/80 hover:text-white transition-colors duration-200 drop-shadow-[0_2px_8px_rgba(0,0,0,0.8)] cursor-pointer p-4 pointer-events-auto"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    handleNext(e);
+                  }}
+                  className="absolute right-4 top-1/2 -translate-y-1/2 z-50 bg-black/50 hover:bg-black/75 rounded-full p-2.5 sm:p-3 text-white backdrop-blur-sm transition-colors cursor-pointer pointer-events-auto shadow-lg hidden md:flex items-center justify-center"
                   title="Media berikutnya"
                 >
-                  <svg className="w-12 h-12" fill="none" stroke="currentColor" strokeWidth="2.5" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M8.25 4.5l7.5 7.5-7.5 7.5" />
-                  </svg>
+                  <ChevronRight className="w-6 h-6 sm:w-7 sm:h-7" />
                 </button>
               </>
             )}
@@ -910,13 +969,14 @@ export default function MemoryDetailModal({
               controls
               autoPlay
               playsInline
-              className="object-contain max-w-full max-h-full rounded-lg shadow-2xl relative z-10"
+              onClick={(e) => e.stopPropagation()}
+              className="max-w-full max-h-screen object-contain select-none relative z-10"
             />
           ) : (
             <img
               src={currentPhoto}
               alt={memory.title}
-              className="object-contain max-w-full max-h-full rounded-lg shadow-2xl relative z-10"
+              className="max-w-full max-h-screen object-contain select-none relative z-10"
             />
           )}
         </div>

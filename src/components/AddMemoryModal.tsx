@@ -7,7 +7,10 @@ import { X, Upload, Sparkles, Loader2, Plus, Play, Hash, MapPin, AlertCircle } f
 interface AddMemoryModalProps {
   isOpen: boolean;
   onClose: () => void;
-  onAddMemory: (memory: Omit<Memory, "id">) => Promise<void> | void;
+  onAddMemory: (
+    memory: Omit<Memory, "id">,
+    onProgress?: (current: number, total: number, percent: number) => void
+  ) => Promise<void> | void;
 }
 
 const MAX_DATE = new Date(new Date().getTime() - (new Date().getTimezoneOffset() * 60000)).toISOString().split('T')[0];
@@ -63,6 +66,7 @@ export default function AddMemoryModal({
   const [newTagInput, setNewTagInput] = useState("");
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState<{ current: number; total: number; percent: number } | null>(null);
   const [aiError, setAiError] = useState<string | null>(null);
   const [submitError, setSubmitError] = useState<string | null>(null);
 
@@ -75,6 +79,20 @@ export default function AddMemoryModal({
     if (!e.target.files || e.target.files.length === 0) return;
 
     const newFiles = Array.from(e.target.files);
+    const MAX_SIZE_MB = 1024; // Batas dinaikkan menjadi 1GB
+    const MAX_SIZE_BYTES = MAX_SIZE_MB * 1024 * 1024;
+
+    // Client-Side Size Validation: Cek apakah ada file > 1GB
+    const oversizedFiles = newFiles.filter((f) => f.size > MAX_SIZE_BYTES);
+    if (oversizedFiles.length > 0) {
+      const oversizedNames = oversizedFiles.map((f) => `"${f.name}" (${(f.size / (1024 * 1024)).toFixed(1)}MB)`).join(", ");
+      alert(`Peringatan: Berkas ${oversizedNames} melebihi batas maksimal 1GB (1024MB). Mohon pilih berkas yang lebih kecil.`);
+      if (fileInputRef.current) {
+        fileInputRef.current.value = "";
+      }
+      return;
+    }
+
     const newUrls = newFiles.map((file) => {
       if (file.type.startsWith("video/")) {
         return URL.createObjectURL(file) + "#t=0.1";
@@ -184,15 +202,21 @@ export default function AddMemoryModal({
 
     try {
       setIsSubmitting(true);
+      setUploadProgress(null);
       const formattedDate = formatDateToLocale(date);
 
-      await onAddMemory({
-        title: title.trim(),
-        date: formattedDate,
-        location: location.trim() || "Tidak ditentukan",
-        images: previewUrls,
-        tags: tags,
-      });
+      await onAddMemory(
+        {
+          title: title.trim(),
+          date: formattedDate,
+          location: location.trim() || "Tidak ditentukan",
+          images: previewUrls,
+          tags: tags,
+        },
+        (current, total, percent) => {
+          setUploadProgress({ current, total, percent });
+        }
+      );
 
       // Reset Form jika berhasil
       setTitle("");
@@ -202,6 +226,7 @@ export default function AddMemoryModal({
       setPreviewUrls([]);
       setTags([]);
       setSubmitError(null);
+      setUploadProgress(null);
       onClose();
     } catch (err: any) {
       console.error("Gagal menambahkan kenangan:", err);
@@ -210,6 +235,7 @@ export default function AddMemoryModal({
       setSubmitError(`Gagal menyimpan: ${errorMessage}`);
     } finally {
       setIsSubmitting(false);
+      setUploadProgress(null);
     }
   };
 
@@ -447,24 +473,50 @@ export default function AddMemoryModal({
             )}
           </div>
 
+          {/* Progress Bar Indikator Upload Real-time */}
+          {isSubmitting && uploadProgress && (
+            <div className="space-y-1.5 pt-2 animate-fadeIn">
+              <div className="flex items-center justify-between text-xs font-medium text-slate-600">
+                <span>
+                  Mengunggah berkas {uploadProgress.current} dari {uploadProgress.total}
+                </span>
+                <span className="font-bold text-blue-600">{uploadProgress.percent}%</span>
+              </div>
+              <div className="w-full h-2 bg-slate-100 rounded-full overflow-hidden border border-slate-200/60 shadow-inner">
+                <div
+                  className="h-full bg-blue-600 rounded-full transition-all duration-300 ease-out shadow-xs"
+                  style={{ width: `${Math.max(5, uploadProgress.percent)}%` }}
+                />
+              </div>
+              <p className="text-[11px] text-amber-600 font-medium text-center">
+                Mohon jangan menutup atau memuat ulang halaman hingga proses selesai.
+              </p>
+            </div>
+          )}
+
           {/* Footer Buttons (Tombol Utama Biru Solid Elegan) */}
           <div className="pt-3 border-t border-slate-100 flex items-center justify-end gap-2.5">
             <button
               type="button"
               onClick={onClose}
-              className="px-4 py-2.5 rounded-lg border border-slate-200 text-slate-600 hover:bg-slate-50 text-sm font-semibold transition"
+              disabled={isSubmitting}
+              className="px-4 py-2.5 rounded-lg border border-slate-200 text-slate-600 hover:bg-slate-50 text-sm font-semibold transition disabled:opacity-40 disabled:cursor-not-allowed"
             >
               Batal
             </button>
             <button
               type="submit"
               disabled={isSubmitting}
-              className="flex items-center gap-2 px-5 py-2.5 rounded-lg bg-blue-600 hover:bg-blue-700 text-white font-semibold shadow-md transition-all cursor-pointer disabled:opacity-60"
+              className="flex items-center gap-2 px-5 py-2.5 rounded-lg bg-blue-600 hover:bg-blue-700 text-white font-semibold shadow-md transition-all cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed"
             >
               {isSubmitting ? (
                 <>
-                  <Loader2 className="w-4 h-4 animate-spin" />
-                  <span>Menyimpan ke Cloud...</span>
+                  <Loader2 className="w-4 h-4 animate-spin shrink-0" />
+                  <span>
+                    {uploadProgress && uploadProgress.total > 0
+                      ? `Mengunggah... ${uploadProgress.percent}% (${uploadProgress.current}/${uploadProgress.total})`
+                      : "Menyimpan ke Cloud..."}
+                  </span>
                 </>
               ) : (
                 <span>Simpan Kenangan</span>

@@ -24,5 +24,8 @@ const db = getFirestore(app);
 
 // Ekspor modul Cloud Storage
 const storage = getStorage(app);
+// Berikan toleransi retry waktu panjang (1 jam) untuk file video dan media berukuran raksasa
+storage.maxUploadRetryTime = 3600000; // 1 hour for large media/video files
+storage.maxOperationRetryTime = 3600000; // 1 hour for storage operations
 
 export { app, auth, googleProvider, db, storage };
