@@ -69,6 +69,7 @@ export default function AddMemoryModal({
   const [uploadProgress, setUploadProgress] = useState<{ current: number; total: number; percent: number } | null>(null);
   const [aiError, setAiError] = useState<string | null>(null);
   const [submitError, setSubmitError] = useState<string | null>(null);
+  const [showCancelConfirm, setShowCancelConfirm] = useState(false);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -225,8 +226,13 @@ export default function AddMemoryModal({
       setSelectedFiles([]);
       setPreviewUrls([]);
       setTags([]);
+      setNewTagInput("");
       setSubmitError(null);
+      setAiError(null);
       setUploadProgress(null);
+      if (fileInputRef.current) {
+        fileInputRef.current.value = "";
+      }
       onClose();
     } catch (err: any) {
       console.error("Gagal menambahkan kenangan:", err);
@@ -239,8 +245,35 @@ export default function AddMemoryModal({
     }
   };
 
+  // Handler Batal: Mengosongkan seluruh state form kembali ke default dan menutup modal konfirmasi + modal utama
+  const handleCancel = () => {
+    setShowCancelConfirm(false);
+    setTitle("");
+    setDate(MAX_DATE);
+    setLocation("");
+    setSelectedFiles([]);
+    setPreviewUrls([]);
+    setTags([]);
+    setNewTagInput("");
+    setSubmitError(null);
+    setAiError(null);
+    setUploadProgress(null);
+    if (fileInputRef.current) {
+      fileInputRef.current.value = "";
+    }
+    onClose();
+  };
+
   return (
-    <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4 overflow-y-auto">
+    <>
+      <div
+      onClick={(e) => {
+        if (e.target === e.currentTarget && !isSubmitting) {
+          onClose();
+        }
+      }}
+      className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4 overflow-y-auto"
+    >
       <div className="relative w-full max-w-lg bg-white rounded-2xl shadow-2xl border border-slate-100 overflow-hidden my-8 animate-fadeIn">
         {/* Header Modal (Netral & Bersih) */}
         <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100 bg-white">
@@ -249,8 +282,10 @@ export default function AddMemoryModal({
             <h2 className="text-lg font-bold text-slate-900 tracking-tight">Tambah Kenangan Baru</h2>
           </div>
           <button
+            type="button"
             onClick={onClose}
-            className="p-1.5 text-slate-400 hover:text-slate-600 rounded-lg hover:bg-slate-100 transition"
+            disabled={isSubmitting}
+            className="p-1.5 text-slate-400 hover:text-slate-600 rounded-lg hover:bg-slate-100 transition disabled:opacity-40"
           >
             <X className="w-5 h-5" />
           </button>
@@ -498,9 +533,9 @@ export default function AddMemoryModal({
           <div className="pt-3 border-t border-slate-100 flex items-center justify-end gap-2.5">
             <button
               type="button"
-              onClick={onClose}
+              onClick={() => setShowCancelConfirm(true)}
               disabled={isSubmitting}
-              className="px-4 py-2.5 rounded-lg border border-slate-200 text-slate-600 hover:bg-slate-50 text-sm font-semibold transition disabled:opacity-40 disabled:cursor-not-allowed"
+              className="px-4 py-2.5 rounded-lg border border-slate-200 text-slate-600 hover:bg-slate-50 text-sm font-semibold transition disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer"
             >
               Batal
             </button>
@@ -526,5 +561,45 @@ export default function AddMemoryModal({
         </form>
       </div>
     </div>
+
+    {/* Custom Confirmation Modal Tailwind (Chill Tone) */}
+    {showCancelConfirm && (
+      <div
+        onClick={(e) => {
+          if (e.target === e.currentTarget) setShowCancelConfirm(false);
+        }}
+        className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 backdrop-blur-sm p-4 animate-in fade-in duration-200"
+      >
+        <div className="bg-white p-6 rounded-2xl shadow-xl w-[90%] max-w-sm text-center animate-in zoom-in-95 duration-200">
+          {/* Ikon peringatan kecil estetik */}
+          <div className="w-12 h-12 rounded-full bg-amber-50 text-amber-500 flex items-center justify-center mx-auto mb-3.5 shadow-xs">
+            <AlertCircle className="w-6 h-6" />
+          </div>
+
+          <h3 className="text-lg font-bold text-gray-900 mb-2">Batalin Kenangan?</h3>
+          <p className="text-sm text-gray-500 mb-6">
+            Eh, tunggu dulu! Yakin mau batalin? Kenangan yang udah diisi bakal hilang, lho.
+          </p>
+
+          <div className="flex gap-3">
+            <button
+              type="button"
+              onClick={() => setShowCancelConfirm(false)}
+              className="bg-gray-100 text-gray-700 hover:bg-gray-200 w-full rounded-lg py-2 font-medium transition cursor-pointer"
+            >
+              Nggak jadi
+            </button>
+            <button
+              type="button"
+              onClick={handleCancel}
+              className="bg-red-500 text-white hover:bg-red-600 w-full rounded-lg py-2 font-medium transition cursor-pointer"
+            >
+              Ya, Batalin
+            </button>
+          </div>
+        </div>
+      </div>
+    )}
+  </>
   );
 }
