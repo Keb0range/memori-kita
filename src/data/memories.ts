@@ -1,19 +1,9 @@
 // ============================================================
-// DATA: Koleksi foto kenangan dengan AI tags untuk simulasi
-// Dalam proyek nyata, data ini akan datang dari database/API
+// DATA: Koleksi foto kenangan dummy untuk demonstrasi & fallback offline
 // ============================================================
 
-export interface Memory {
-  id: number | string;
-  title: string;       // Judul singkat kenangan
-  date: string;        // Tanggal kejadian
-  location: string;    // Lokasi tempat foto diambil
-  images: string[];    // Array URL/Base64 gambar kenangan (Multi-Foto)
-  tags: string[];      // AI tags — label yang dipakai untuk filtering
-  color?: string;     // Warna aksen kartu (opsional)
-  userId?: string;    // ID Pengguna pemilik data kenangan (Firestore UID)
-  createdAt?: any;
-}
+import { Memory } from "@/types/memory";
+export type { Memory };
 
 // Array dummy data awal dengan multi-foto untuk demonstrasi fitur carousel
 export const MEMORIES: Memory[] = [

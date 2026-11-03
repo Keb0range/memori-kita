@@ -13,7 +13,7 @@ import {
 } from "firebase/firestore";
 import { ref, uploadBytes, uploadBytesResumable, uploadString, getDownloadURL } from "firebase/storage";
 import { db, storage } from "@/lib/firebase";
-import { Memory } from "@/data/memories";
+import { Memory } from "@/types/memory";
 
 const COLLECTION_NAME = "memories";
 

@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState, useEffect } from "react";
-import { Memory } from "@/data/memories";
+import { Memory } from "@/types/memory";
 import { Calendar, Play } from "lucide-react";
 
 const FALLBACK_IMAGE =

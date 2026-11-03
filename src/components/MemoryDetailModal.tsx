@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState, useEffect, useRef } from "react";
-import { Memory } from "@/data/memories";
+import { Memory } from "@/types/memory";
 import {
   X,
   ChevronLeft,

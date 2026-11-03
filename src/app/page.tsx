@@ -1,7 +1,8 @@
 "use client";
 
 import React, { useState, useMemo, useRef, useEffect } from "react";
-import { MEMORIES, Memory } from "@/data/memories";
+import { Memory } from "@/types/memory";
+import { MEMORIES } from "@/data/memories";
 import MemoryCard from "@/components/MemoryCard";
 import AddMemoryModal from "@/components/AddMemoryModal";
 import MemoryDetailModal from "@/components/MemoryDetailModal";

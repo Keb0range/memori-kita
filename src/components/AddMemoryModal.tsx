@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState, useRef } from "react";
-import { Memory } from "@/data/memories";
+import { Memory } from "@/types/memory";
 import { X, Upload, Sparkles, Loader2, Plus, Play, Hash, MapPin, AlertCircle } from "lucide-react";
 
 interface AddMemoryModalProps {
