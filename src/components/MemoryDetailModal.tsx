@@ -485,10 +485,10 @@ export default function MemoryDetailModal({
           <button
             type="button"
             onClick={onClose}
-            className="md:hidden absolute -top-11 right-1 z-50 w-9 h-9 flex items-center justify-center rounded-full bg-black/60 hover:bg-black/80 text-white backdrop-blur-md transition-all cursor-pointer border border-white/20 shadow-lg active:scale-95"
+            className="md:hidden absolute -top-11 right-1 z-50 w-9 h-9 flex items-center justify-center rounded-full bg-black/60 hover:bg-black/90 hover:scale-110 active:scale-95 text-white/90 hover:text-white backdrop-blur-md transition-all duration-200 cursor-pointer border border-white/20 hover:border-white/50 shadow-lg hover:shadow-xl hover:shadow-black/40"
             title="Tutup"
           >
-            <X className="w-5 h-5" />
+            <X className="w-5 h-5 transition-transform duration-200" />
           </button>
 
           {/* Kartu Modal Utama */}

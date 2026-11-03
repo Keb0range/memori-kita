@@ -245,6 +245,29 @@ export default function AddMemoryModal({
     }
   };
 
+  // Cek apakah user sudah mengisi data apa pun di dalam form
+  const hasUserEnteredData = () => {
+    return (
+      title.trim() !== "" ||
+      location.trim() !== "" ||
+      selectedFiles.length > 0 ||
+      previewUrls.length > 0 ||
+      tags.length > 0 ||
+      newTagInput.trim() !== ""
+    );
+  };
+
+  // Handler jika user menekan tombol Batal atau tombol Tutup (X) / backdrop
+  const handleRequestClose = () => {
+    if (isSubmitting) return;
+
+    if (hasUserEnteredData()) {
+      setShowCancelConfirm(true);
+    } else {
+      handleCancel();
+    }
+  };
+
   // Handler Batal: Mengosongkan seluruh state form kembali ke default dan menutup modal konfirmasi + modal utama
   const handleCancel = () => {
     setShowCancelConfirm(false);
@@ -269,7 +292,7 @@ export default function AddMemoryModal({
       <div
       onClick={(e) => {
         if (e.target === e.currentTarget && !isSubmitting) {
-          onClose();
+          handleRequestClose();
         }
       }}
       className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4 overflow-y-auto"
@@ -280,7 +303,7 @@ export default function AddMemoryModal({
           <h2 className="text-lg font-bold text-slate-900 tracking-tight">Tambah Kenangan Baru</h2>
           <button
             type="button"
-            onClick={onClose}
+            onClick={handleRequestClose}
             disabled={isSubmitting}
             className="p-1.5 text-slate-400 hover:text-slate-600 rounded-lg hover:bg-slate-100 transition disabled:opacity-40"
           >
@@ -530,7 +553,7 @@ export default function AddMemoryModal({
           <div className="pt-3 border-t border-slate-100 flex items-center justify-between sm:justify-end gap-2.5 w-full">
             <button
               type="button"
-              onClick={() => setShowCancelConfirm(true)}
+              onClick={handleRequestClose}
               disabled={isSubmitting}
               className="flex-1 sm:flex-none px-3 sm:px-4 py-2.5 rounded-lg border border-slate-200 text-slate-600 hover:bg-slate-50 text-sm font-semibold transition disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer text-center whitespace-nowrap"
             >

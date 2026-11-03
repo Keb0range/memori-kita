@@ -541,7 +541,7 @@ export default function Home() {
                 <div className="w-20 sm:w-24 h-5 rounded-md bg-slate-100 animate-pulse" />
               ) : (
                 <>
-                  <h1 className="text-base sm:text-lg font-medium tracking-tight select-none text-slate-800 whitespace-nowrap transition-opacity duration-300 opacity-100">
+                  <h1 className="text-base sm:text-lg font-semibold tracking-tight select-none text-slate-800 whitespace-nowrap transition-opacity duration-300 opacity-100">
                     {appName}
                   </h1>
                   <button

@@ -89,13 +89,13 @@ export default function HeroCropperModal({
           </button>
         </div>
 
-        {/* Area Cropper (Rasio Landscape Lebar Standar 16:9) */}
+        {/* Area Cropper (Rasio Ultrawide Banner 21:9 Sesuai Kontainer Hero) */}
         <div className="relative w-full h-[40vh] sm:h-[48vh] bg-black overflow-hidden select-none">
           <Cropper
             image={imageSrc}
             crop={crop}
             zoom={zoom}
-            aspect={16 / 9}
+            aspect={21 / 9}
             onCropChange={setCrop}
             onZoomChange={setZoom}
             onCropComplete={handleCropAreaChange}
