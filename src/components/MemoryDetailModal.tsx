@@ -479,18 +479,21 @@ export default function MemoryDetailModal({
   return (
     <>
       {/* Modal Dialog Utama */}
-      <div className="fixed inset-0 z-50 bg-black/75 backdrop-blur-md flex items-center justify-center p-2 sm:p-4 md:p-6 overflow-y-auto">
-        <div className="relative w-full max-w-lg md:max-w-4xl lg:max-w-5xl bg-white rounded-2xl md:rounded-3xl shadow-2xl border border-slate-200/80 overflow-hidden my-auto animate-fadeIn flex flex-col md:flex-row items-stretch md:h-[620px] max-h-[92vh] p-0">
-          {/* Tombol Tutup (X) Melayang Modern */}
+      <div className="fixed inset-0 z-50 bg-black/75 backdrop-blur-md flex items-center justify-center p-2 pt-14 sm:p-4 md:p-6 overflow-y-auto">
+        <div className="relative w-full max-w-lg md:max-w-4xl lg:max-w-5xl my-auto animate-fadeIn">
+          {/* Tombol Tutup (X) Mobile di Posisi Tanda Kuning (Di Luar Kartu, Mengambang di Pojok Kanan Atas) */}
           <button
+            type="button"
             onClick={onClose}
-            className="absolute top-3 right-3 sm:top-4 sm:right-4 z-40 bg-black/40 hover:bg-black/60 md:bg-white text-white md:text-slate-600 rounded-full p-2 backdrop-blur-sm transition-colors duration-200 hover:bg-gray-200 hover:text-gray-900 cursor-pointer shadow-sm md:border md:border-gray-200"
+            className="md:hidden absolute -top-11 right-1 z-50 w-9 h-9 flex items-center justify-center rounded-full bg-black/60 hover:bg-black/80 text-white backdrop-blur-md transition-all cursor-pointer border border-white/20 shadow-lg active:scale-95"
             title="Tutup"
           >
             <X className="w-5 h-5" />
           </button>
 
-          {/* Hidden File Input untuk Mode Edit */}
+          {/* Kartu Modal Utama */}
+          <div className="relative w-full bg-white rounded-2xl md:rounded-3xl shadow-2xl border border-slate-200/80 overflow-hidden flex flex-col md:flex-row items-stretch md:h-[620px] max-h-[92vh] p-0">
+            {/* Hidden File Input untuk Mode Edit */}
           <input
             type="file"
             ref={editFileInputRef}
@@ -573,23 +576,6 @@ export default function MemoryDetailModal({
               </div>
             )}
 
-            {/* Tombol Hapus 1 Foto/Media: Pojok kiri bawah */}
-            {!isEditing && (
-              <button
-                type="button"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  handleDeleteCurrentPhoto(e);
-                }}
-                className={`absolute bottom-3 left-3 sm:bottom-4 sm:left-4 bg-black/50 hover:bg-red-500/90 text-white p-2 rounded-full backdrop-blur-xs shadow-md z-20 cursor-pointer transition-opacity duration-300 ${
-                  showControls ? "opacity-100" : "opacity-0 pointer-events-none md:pointer-events-auto"
-                } md:opacity-0 md:group-hover:opacity-100`}
-                title="Hapus media ini"
-              >
-                <Trash2 className="w-4 h-4" />
-              </button>
-            )}
-
             {/* Tombol Fullscreen / Expand: Pojok kiri atas */}
             {!isVideoMedia(currentPhoto) && currentPhoto && !isEditing && (
               <button
@@ -647,9 +633,19 @@ export default function MemoryDetailModal({
           </div>
 
           {/* SISI KANAN: Panel Info & Detail (iOS Card Grouping & Sticky Footer) */}
-          <div className="w-full md:w-[40%] h-auto md:h-full flex flex-col bg-slate-100 min-h-0 overflow-hidden">
+          <div className="relative w-full md:w-[40%] h-auto md:h-full flex flex-col bg-slate-100 min-h-0 overflow-hidden">
+            {/* Tombol Tutup (X) Absolut terhadap container panel kanan (Hanya di Desktop) */}
+            <button
+              type="button"
+              onClick={onClose}
+              className="hidden md:flex absolute top-4 right-4 z-30 bg-white/90 hover:bg-white text-slate-600 hover:text-slate-900 rounded-full p-2 backdrop-blur-sm transition-colors duration-200 cursor-pointer shadow-sm border border-gray-200"
+              title="Tutup"
+            >
+              <X className="w-5 h-5" />
+            </button>
+
             {/* Scrollable Content: Header, Thumbnails, Card Info */}
-            <div className="flex-1 overflow-y-auto p-5 sm:p-6 pr-12 md:pr-14 flex flex-col gap-5 min-h-0">
+            <div className="flex-1 overflow-y-auto p-5 sm:p-6 md:pt-14 md:pr-14 flex flex-col gap-5 min-h-0">
               {/* Header Area: Tanggal & Judul dengan Garis Pemisah Halus */}
               {isEditing ? (
                 <div className="border-b border-gray-200 pb-4 space-y-3">
@@ -932,6 +928,7 @@ export default function MemoryDetailModal({
           </div>
         </div>
       </div>
+    </div>
 
       {/* Mode Fullscreen / Premium Lightbox */}
       {isFullscreen && (
@@ -970,10 +967,10 @@ export default function MemoryDetailModal({
                 e.stopPropagation();
                 setIsFullscreen(false);
               }}
-              className="absolute top-4 right-4 z-50 bg-black/50 hover:bg-black/75 rounded-full text-white p-2.5 backdrop-blur-sm transition-colors cursor-pointer pointer-events-auto shadow-lg"
+              className="absolute top-4 right-4 z-50 w-10 h-10 flex items-center justify-center rounded-full bg-black/50 hover:bg-black/70 text-white transition-colors backdrop-blur-sm cursor-pointer pointer-events-auto shadow-lg"
               title="Tutup Layar Penuh"
             >
-              <X className="w-6 h-6" />
+              <X className="w-5 h-5" />
             </button>
 
             {/* Navigasi Panah Kiri & Kanan: Disembunyikan di Mobile, Muncul di Desktop */}

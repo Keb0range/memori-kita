@@ -74,12 +74,9 @@ export default function AvatarCropperModal({
       <div className="relative w-full max-w-md bg-slate-900/95 border border-white/10 rounded-3xl shadow-2xl overflow-hidden flex flex-col">
         {/* Header Modal */}
         <div className="flex items-center justify-between px-6 py-4 border-b border-white/10 bg-slate-900/50 backdrop-blur-sm">
-          <div className="flex items-center gap-2">
-            <span className="w-2.5 h-2.5 rounded-full bg-blue-500 shadow-sm" />
-            <h3 className="text-base font-bold text-white tracking-tight">
-              Sesuaikan Foto Profil
-            </h3>
-          </div>
+          <h3 className="text-base font-bold text-white tracking-tight">
+            Sesuaikan Foto Profil
+          </h3>
           <button
             type="button"
             onClick={onClose}
@@ -156,7 +153,7 @@ export default function AvatarCropperModal({
               type="button"
               onClick={onClose}
               disabled={isProcessing}
-              className="px-4 py-2 rounded-xl text-xs font-semibold text-slate-300 hover:text-white hover:bg-white/10 transition cursor-pointer"
+              className="px-4 py-2 rounded-lg text-gray-400 font-medium hover:text-white hover:bg-white/10 transition-colors duration-200 cursor-pointer disabled:opacity-50"
             >
               Batal
             </button>

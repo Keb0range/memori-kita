@@ -277,10 +277,7 @@ export default function AddMemoryModal({
       <div className="relative w-full max-w-lg bg-white rounded-2xl shadow-2xl border border-slate-100 overflow-hidden my-8 animate-fadeIn">
         {/* Header Modal (Netral & Bersih) */}
         <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100 bg-white">
-          <div className="flex items-center gap-2">
-            <span className="w-2.5 h-2.5 rounded-full bg-slate-800 shadow-xs" />
-            <h2 className="text-lg font-bold text-slate-900 tracking-tight">Tambah Kenangan Baru</h2>
-          </div>
+          <h2 className="text-lg font-bold text-slate-900 tracking-tight">Tambah Kenangan Baru</h2>
           <button
             type="button"
             onClick={onClose}
@@ -479,8 +476,8 @@ export default function AddMemoryModal({
                 value={newTagInput}
                 onChange={(e) => setNewTagInput(e.target.value)}
                 onKeyDown={handleKeyDownTag}
-                placeholder={tags.length === 0 ? "Ketik tag lalu tekan Enter..." : "Tambah tag..."}
-                className="bg-transparent border-none outline-none flex-1 text-slate-700 min-w-[120px] text-sm p-0 placeholder-slate-400"
+                placeholder={tags.length === 0 ? "Ketik tag..." : "Tambah tag..."}
+                className="bg-transparent border-none outline-none flex-1 text-slate-700 min-w-[90px] sm:min-w-[120px] text-sm p-0 placeholder-slate-400"
               />
 
               <button
@@ -529,32 +526,35 @@ export default function AddMemoryModal({
             </div>
           )}
 
-          {/* Footer Buttons (Tombol Utama Biru Solid Elegan) */}
-          <div className="pt-3 border-t border-slate-100 flex items-center justify-end gap-2.5">
+          {/* Footer Buttons (Mobile-Native: 50:50 seimbang di Mobile, Rata Kanan di Tablet/Desktop) */}
+          <div className="pt-3 border-t border-slate-100 flex items-center justify-between sm:justify-end gap-2.5 w-full">
             <button
               type="button"
               onClick={() => setShowCancelConfirm(true)}
               disabled={isSubmitting}
-              className="px-4 py-2.5 rounded-lg border border-slate-200 text-slate-600 hover:bg-slate-50 text-sm font-semibold transition disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer"
+              className="flex-1 sm:flex-none px-3 sm:px-4 py-2.5 rounded-lg border border-slate-200 text-slate-600 hover:bg-slate-50 text-sm font-semibold transition disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer text-center whitespace-nowrap"
             >
               Batal
             </button>
             <button
               type="submit"
               disabled={isSubmitting}
-              className="flex items-center gap-2 px-5 py-2.5 rounded-lg bg-blue-600 hover:bg-blue-700 text-white font-semibold shadow-md transition-all cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed"
+              className="flex-1 sm:flex-none flex items-center justify-center gap-1.5 sm:gap-2 px-3 sm:px-5 py-2.5 rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-sm font-semibold shadow-md transition-all cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed text-center whitespace-nowrap"
             >
               {isSubmitting ? (
                 <>
                   <Loader2 className="w-4 h-4 animate-spin shrink-0" />
-                  <span>
+                  <span className="truncate">
                     {uploadProgress && uploadProgress.total > 0
-                      ? `Mengunggah... ${uploadProgress.percent}% (${uploadProgress.current}/${uploadProgress.total})`
-                      : "Menyimpan ke Cloud..."}
+                      ? `${uploadProgress.percent}%`
+                      : "Menyimpan..."}
                   </span>
                 </>
               ) : (
-                <span>Simpan Kenangan</span>
+                <>
+                  <span className="sm:hidden">Simpan</span>
+                  <span className="hidden sm:inline">Simpan Kenangan</span>
+                </>
               )}
             </button>
           </div>

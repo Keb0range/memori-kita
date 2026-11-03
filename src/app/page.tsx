@@ -567,19 +567,19 @@ export default function Home() {
             {isAuthLoading ? (
               /* Skeleton Loader Halus Saat Status Auth Belum Terkonfirmasi */
               <div className="flex items-center gap-2 sm:gap-2.5 animate-pulse">
-                <div className="w-24 sm:w-36 h-8 sm:h-9 rounded-xl bg-slate-100" />
+                <div className="w-9 sm:w-36 h-9 rounded-xl bg-slate-100" />
                 <div className="w-8 sm:w-28 h-8 sm:h-9 rounded-xl bg-slate-100" />
               </div>
             ) : (
               <>
-                {/* Tombol Tambah Kenangan (Biru Solid Elegan) */}
+                {/* Tombol Tambah Kenangan (Simetris Ikon Plus di Mobile, Lengkap di Layar Lebih Besar) */}
                 <button
                   onClick={() => setIsAddModalOpen(true)}
-                  className="flex items-center gap-1.5 px-3 sm:px-3.5 py-1.5 sm:py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs sm:text-sm font-semibold shadow-sm transition-all transform hover:-translate-y-0.5 shrink-0 cursor-pointer"
+                  className="w-9 h-9 sm:w-auto sm:h-auto flex items-center justify-center p-0 sm:px-3.5 sm:py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs sm:text-sm font-semibold shadow-sm transition-all transform hover:-translate-y-0.5 shrink-0 cursor-pointer sm:gap-1.5"
+                  title="Tambah Kenangan"
                 >
-                  <Plus className="w-4 h-4" />
+                  <Plus className="w-4 h-4 shrink-0" />
                   <span className="hidden sm:inline">Tambah Kenangan</span>
-                  <span className="sm:hidden">Tambah</span>
                 </button>
 
                 {/* Google Authentication Section */}
@@ -614,10 +614,10 @@ export default function Home() {
 
                     <button
                       onClick={handleLogout}
-                      className="p-1.5 sm:px-2.5 sm:py-1.5 rounded-xl border border-slate-200 hover:border-red-200 hover:bg-red-50 text-slate-600 hover:text-red-600 text-xs font-medium transition-all flex items-center gap-1.5 cursor-pointer shadow-xs"
+                      className="w-8 h-8 sm:w-auto sm:h-auto flex items-center justify-center p-0 sm:px-2.5 sm:py-1.5 rounded-xl border border-slate-200 hover:border-red-200 hover:bg-red-50 text-slate-600 hover:text-red-600 text-xs font-medium transition-all shadow-xs cursor-pointer sm:gap-1.5"
                       title="Keluar dari akun"
                     >
-                      <LogOut className="w-3.5 h-3.5" />
+                      <LogOut className="w-3.5 h-3.5 shrink-0" />
                       <span className="hidden sm:inline">Logout</span>
                     </button>
                   </div>
